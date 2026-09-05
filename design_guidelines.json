@@ -1,0 +1,179 @@
+{
+  "app_name": "BAITUL MAAL AL-FALAH",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A high-clarity, professional command center merging fintech precision with a modern, minimal Islamic aesthetic.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#1C2B26",
+    "surfaceSecondary": "#F4F7F5",
+    "onSurfaceSecondary": "#384B44",
+    "surfaceTertiary": "#E9EFEA",
+    "onSurfaceTertiary": "#1C2B26",
+    "surfaceInverse": "#0A1C16",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#064E3B",
+    "brandPrimary": "#064E3B",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C5A059",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#E1EAE6",
+    "onBrandTertiary": "#064E3B",
+    "success": "#059669",
+    "onSuccess": "#FFFFFF",
+    "warning": "#D97706",
+    "onWarning": "#FFFFFF",
+    "error": "#DC2626",
+    "onError": "#FFFFFF",
+    "info": "#0D9488",
+    "onInfo": "#FFFFFF",
+    "border": "#E5EBE8",
+    "borderStrong": "#BCCDC5",
+    "divider": "#E5EBE8"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room for readability. Tightly group related data points within cards. Ensure safe area at all screen roots.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Apply to the bottom tab bar and sticky headers.",
+      "Use for bottom sheet handles and full-screen modal scrims.",
+      "Ensure text on top of glass uses solid high-contrast onSurface colors."
+    ],
+    "dont's": [
+      "Do not use on regular data cards or form fields.",
+      "Do not blur entire screens."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Login",
+      "purpose": "Secure gateway for Manager, Content Team, and CS roles with Google and Email/Password options.",
+      "states": {
+        "loading": "Spinner on submit button, fields disabled.",
+        "empty": "N/A",
+        "error": "Inline text below fields, or full-width error banner at top."
+      },
+      "layout": "Full-bleed background image with vertical gradient scrim (transparent to surfaceInverse). Logo/Text at the top 30%. Login cards/forms layered in a bottom sheet-style surface at the bottom 40%."
+    },
+    {
+      "name": "Home (Manager Command Center)",
+      "purpose": "A 5-second snapshot of operational health spanning Tasks, Finance, Fundraising, and Content.",
+      "states": {
+        "loading": "Skeleton loaders for KPI cards and chart areas.",
+        "empty": "Empty state illustration with 'No Data Available for Today'.",
+        "error": "Error boundary with 'Gagal memuat data' and a retry button."
+      },
+      "layout": "Header: Net-worth style summary card showing 'Total Saldo' (Total Balance) with a soft green gradient. Quick Actions: 4 circular buttons in a row just below header. 'PERLU PERHATIAN' (Alerts): Horizontal scrolling list of warning cards. Grid of 2-col KPI cards (Fundraising, Content stats)."
+    },
+    {
+      "name": "Content",
+      "purpose": "Manage tasks, priorities, briefs, and content calendar.",
+      "states": {
+        "loading": "List skeletons.",
+        "empty": "Folder icon with 'Belum ada konten hari ini' and a primary 'Tambah Konten' CTA.",
+        "error": "Standard retry state."
+      },
+      "layout": "Sticky top segmented control (In Production, Review, Published). Vertical list of task cards. Each card has a status badge, priority tag, title, and a linear progress bar for the checklist."
+    },
+    {
+      "name": "Fundraising",
+      "purpose": "Track monthly targets, donor count, and active programs.",
+      "states": {
+        "loading": "Skeletons for progress bars and list rows.",
+        "empty": "Empty icon with 'Belum ada donasi'.",
+        "error": "Standard retry state."
+      },
+      "layout": "Top section: Large progress bar card showing 'Target Bulanan' achievement in %. Below: Sectioned list of recent donations with donor name, amount, and timestamp."
+    },
+    {
+      "name": "Reports",
+      "purpose": "Financial summary with surplus/deficit and expense tracking with filters.",
+      "states": {
+        "loading": "Skeletons.",
+        "empty": "No reports generated.",
+        "error": "Standard retry state."
+      },
+      "layout": "Filter row (sticky) with Date Picker triggers. Donut chart or summary block for Income vs Expenses. Scrollable list of detailed transactions categorized by type."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Manage role access, settings, and user details.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "Standard retry state."
+      },
+      "layout": "Header with user initials avatar in brandTertiary circle. Grouped list rows for settings (Edit Profile, Role Info, Logout) with chevrons."
+    }
+  ],
+  "images": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1728046421058-1e1e28e57193?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwxfHxtb3NxdWUlMjBpbGx1c3RyYXRpb24lMjBtaW5pbWFsJTIwZ3JlZW58ZW58MHx8fHwxNzg4MzEyNDExfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "A minimal building illustration with a white and green roof"
+    },
+    "header_pattern": {
+      "url": "https://images.unsplash.com/photo-1731405710479-7b0fb317a718?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxtaW5pbWFsJTIwZ2VvbWV0cmljJTIwaXNsYW1pYyUyMHBhdHRlcm4lMjBncmVlbnxlbnwwfHx8fDE3ODgzMTI0MDR8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Minimal geometric Islamic pattern behind a wooden arch"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the Deep Green (#064E3B) and Soft Gold (#C5A059) palette. NO BLUE allowed anywhere in the app (used Teal #0D9488 for Info).",
+    "Use 'Plus Jakarta Sans' for all text elements to maintain a modern fintech and highly legible dashboard feel.",
+    "Implement the Command Center (Home) with a 'Net Worth' style header for financial balance, followed by horizontal quick actions, an alerts section ('PERLU PERHATIAN'), and a 2-column masonry or grid for KPIs.",
+    "Ensure all data screens (Content, Fundraising, Reports) implement Empty, Loading (Skeletons preferred), and Error states.",
+    "For the bottom navigation, use 5 tabs as requested: HOME, CONTENT, FUNDRAISING, REPORTS, PROFILE. Ensure safe area clearance at the bottom.",
+    "Use Phosphor icons consistently. Ensure they are filled when active in the tab bar and outlined otherwise.",
+    "Cards should never be flush to the screen edge. Use minimum 'md' (12pt) or 'lg' (16pt) margin.",
+    "In the Content module, use progress bars inside task cards for checklist completion percentage.",
+    "Status badges (High/Medium/Low priority or Pending/Published) must use a combination of surfaceTertiary or status-specific light background with the corresponding bold text color.",
+    "Login screen must use the provided login_background image with a dark gradient scrim at the bottom to ensure the form and text remain legible."
+  ],
+  "haptics": {
+    "primary_button_press": "impactLight",
+    "tab_change": "selection",
+    "pull_to_refresh": "impactMedium",
+    "quick_action_tap": "impactLight",
+    "status_change_success": "notificationSuccess",
+    "error_alert": "notificationError"
+  }
+}

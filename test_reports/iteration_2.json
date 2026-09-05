@@ -1,0 +1,43 @@
+{
+  "summary": "AI Content Assistant feature tested end-to-end. Backend: 22/22 pytest cases PASSED in /app/backend/tests/test_ai_content.py, covering (a) RBAC — manager/content have access; fundraising blocked with 403 on POST /api/ai/generate, GET /api/content-items, POST /api/content-items/{id}/create-task, (b) POST /api/ai/generate from source_type=program returns full package with content_dna, strategy{dna,hook_type,emotional_trigger,target,goal,main_message}, hook, ≥2 alt_hooks (actual 3), script scenes with duration/visual/voice_over/text_overlay/edit keys, shot_list, cta{text}, caption, platform, status=Draft — verified, (c) POST /api/ai/generate from source_type=idea works, (d) Content Items CRUD: list, get, PUT status→Approved persisted, POST duplicate creates new Draft with 'Salinan' title, DELETE soft-archives (subsequent GET → 404), (e) POST /api/ai/transform action=improve_hook and action=shorter re-call AI and update the item (updated_at or hook differs), (f) CRITICAL WORKFLOW: POST /api/content-items/{cid}/create-task creates a REAL task category=Reels priority=High linked to program (program_id from content item), transfers brief (hook, main_content from script, cta.text, caption, platform) verified via /api/tasks/{tid} — brief.hook matches item.hook, auto-creates checklist_items from shot_list (checklist_total == len(shot_list) capped at 10), content_item.status→'In Production' and related_task_id populated, task appears in GET /api/tasks list, (g) Regression: all 3 role logins, dashboard (manager/content/fundraising), finance summary, programs list, tasks list, donation create — all PASS. Real Gemini 3 Flash calls took ~5-20s each; total suite 49s under pytest-xdist. Frontend: manager login → Konten tab shows both AI (sparkles, testID open-ai) and Library (testID open-library) buttons visible. Tapping open-ai loads /ai — AI Assistant screen renders with quick-start chips (quick-program, quick-idea, quick-facility etc), full form, and 'Generate Konten' PrimaryButton (ai-generate). Quick-program chip activates program mode → EntitySelect (ai-program) modal shows real programs list (Program Makan Gratis, Teh Jahe 24 Jam, Gerakan Infaq Beras, Kajian Pejuang Nafkah). RBAC frontend: fundraising role (cs@alfalah.id) correctly HIDES open-ai and open-library buttons on Konten tab (canAI gate works). NOTE: fundraising can still direct-navigate to /ai URL and see the form (no client-side route guard), but backend correctly returns 403 on generate. Full end-to-end AI generation → transform → create-task flow could not be automated cleanly due to two RN-Web Pressable quirks discovered during testing (see react_native_issues), but the corresponding backend flow is fully verified via pytest and the manual visual verification confirms all critical testIDs render.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Pressable (quick-* chips in horizontal ScrollView)", "issue": "RN-Web renders these Pressable chips with computed pointer-events:none and 0x0 bounding rect on the wrapper (child text is clickable). Playwright's [data-testid='quick-program'] click / bounding_box fail; only clicking the child <div> containing 'Dari Program' text works. Likely caused by nested horizontal ScrollView layout on web. Reference: /app/frontend/app/ai.tsx:108"},
+      {"component": "PrimaryButton (ai-generate) inside KeyboardAvoidingView", "issue": "Similar pointer-events collapse on the outer Pressable; clicking [data-testid='ai-generate'] intermittently reports element not visible even after scroll_into_view_if_needed. Clicking the button label 'Generate Konten' works. Reference: /app/frontend/app/ai.tsx:149"},
+      {"component": "/ai route guard", "issue": "Fundraising users cannot see open-ai/open-library buttons but CAN still direct-navigate to /ai and view the AI form (backend correctly blocks the actual generate call with 403). Consider adding a role guard/redirect on the /ai screen for defense-in-depth. Reference: /app/frontend/app/ai.tsx"},
+      {"component": "shadow* & pointerEvents deprecation warnings", "issue": "Persists from iteration 1 — RN-Web warns to migrate 'shadow*' props to 'boxShadow' and prop 'pointerEvents' to style. Non-blocking. Reference: theme/shadow definitions."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_content.py",
+    "/app/backend/tests/test_baitulmaal.py",
+    "/app/test_reports/pytest/pytest_ai_results.xml"
+  ],
+  "action_items": [
+    "(Optional, defense-in-depth) Add role guard on /ai and /content-library routes to redirect fundraising users to /home. Currently only the entry buttons are gated by canAI.",
+    "(Optional) Address the RN-Web Pressable pointer-events:none issue on horizontal-scroll chips and the PrimaryButton inside KeyboardAvoidingView so E2E automation can click them via testID without falling back to child text.",
+    "No functional fixes required for the AI feature — all backend endpoints and workflows work correctly."
+  ],
+  "critical_code_review_comments": [
+    "server.py now ~1548 lines (was 1160) — routers/{ai,content_items}.py split is increasingly warranted.",
+    "AI JSON extraction (_extract_json) has good fallbacks for markdown-wrapped and prose-wrapped JSON — verified robust across many Gemini responses.",
+    "create_task_from_content correctly caps checklist items to 10 (shot_list[:10]) and stores program_id/link back to content item — solid.",
+    "AI_ROLES tuple correctly excludes 'fundraising'; require_roles enforced on all AI endpoints — verified via 403 tests.",
+    "MongoDB _id excluded in all new AI endpoints ({'_id': 0}) — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_content.py (new pytest suite for AI feature)",
+    "/app/test_reports/iteration_2.json (this report)",
+    "/app/test_reports/pytest/pytest_ai_results.xml (JUnit output)"
+  ],
+  "success_rate": {"backend": "100% (22/22 AI + regression)", "frontend": "AI screen loads + critical testIDs verified + RBAC visibility gate confirmed; full E2E generation click could not be automated cleanly (see react_native_issues)"},
+  "seed_data_creation": "No new seed data. Tests use existing seeded programs (prog_makan01) and user user_content001. Content items created by AI tests are left in DB (soft-archived where applicable) — will accumulate over reruns but do not affect assertions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "AI tests at /app/backend/tests/test_ai_content.py run in ~50s with real Gemini calls. Set EXPO_PUBLIC_BACKEND_URL env var before pytest. For frontend AI E2E via Playwright, do NOT rely solely on [data-testid='quick-program'] or [data-testid='ai-generate'] click — RN-Web collapses those Pressables to 0x0 with pointer-events:none. Instead click by child text ('Dari Program', 'Generate Konten') or use JS element.click() after scrollIntoView. EntitySelect modal shows program names: Program Makan Gratis / Teh Jahe 24 Jam / Gerakan Infaq Beras / Kajian Pejuang Nafkah.",
+  "rca_of_issue": "N/A — no functional bugs. Two RN-Web interaction quirks documented for future testers (pointer-events on chip/PrimaryButton wrappers) and one optional defense-in-depth suggestion (client-side route guard on /ai for fundraising)."
+}

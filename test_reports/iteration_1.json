@@ -1,0 +1,40 @@
+{
+  "summary": "Full backend + frontend smoke test for BAITUL MAAL AL-FALAH. Backend: 26/26 pytest cases PASSED covering auth (login/register/me/logout), RBAC (manager/content/fundraising), dashboard role-specific cards, programs CRUD + enrichment (achievement/total_raised/remaining_funds), donations CRUD with inline donor creation, dynamic relationship integrity (Paid donation increases program total_raised, finance total_income, dashboard donations_today; Pending is excluded; expense reduces remaining_funds and increases total_expenses), donors GET with history, expenses CRUD manager-only, tasks with brief upsert and checklist add/toggle/delete with progress auto-calc, finance summary status (SURPLUS/DEFICIT/BALANCED), and reports (financial/expense/fundraising/donation/program/content) with role gating. Frontend: login flow (fill-demo + submit) works, dashboard renders real KPIs (Rp 18.017.901 SURPLUS, income Rp 22.1jt, expense Rp 4.1jt), all 5 bottom tabs navigate correctly for manager (Beranda/Konten/Donasi/Laporan/Profil), fundraising tabs (fr-tab-program/donation/donor) and fr-fab present and functional, all report-* chips found and financial summary renders, profile shows role Manajer + Keluar logout button, Konten tab shows tasks list with checklist %, add-task-fab present. Content role correctly hides Donasi tab (verified: Beranda|Konten|Laporan|Profil only) and only Tugas quick action shown. No red screens or crashes. Deprecation warnings from RN Web (shadow* props, props.pointerEvents) — non-blocking. Google OAuth was NOT tested per instructions (Emergent-managed).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "reports.tsx", "issues": ["Excel/CSV/PDF export chips visible but not implemented (pending integration — this is expected per problem statement)"]}
+    ],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "RN Web console deprecation warning: 'shadow*' style props are deprecated. Use 'boxShadow' equivalents via StyleSheet. Search project for shadowColor/shadowOffset/shadowOpacity/shadowRadius and migrate to boxShadow or platform-specific style."},
+      {"component": "props.pointerEvents", "issue": "RN Web console deprecation warning: props.pointerEvents is deprecated. Use style.pointerEvents instead. Likely inside Expo Router / gesture handler internals — safe to ignore if third-party, but audit any explicit pointerEvents prop in app code."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_baitulmaal.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "(Optional) Migrate any explicit shadow* props in StyleSheets to boxShadow to silence RN Web deprecation warning.",
+    "(Optional) Audit code for pointerEvents={...} props and move them into style objects.",
+    "No functional fixes required — all in-scope features work correctly."
+  ],
+  "critical_code_review_comments": [
+    "server.py is single-file (~1160 lines) and exceeds 700-line guideline — consider splitting into routers/{auth,programs,donations,expenses,tasks,reports}.py for maintainability.",
+    "OPENING_BALANCE hardcoded to 0 at module level (line 811); acceptable for MVP but should be a config/DB value for production.",
+    "Donation date field stored as ISO string but no server-side validation of format — filter ranges rely on lexicographic ISO comparison which works but is fragile.",
+    "load_dotenv + direct os.environ[...] used correctly; MongoDB _id excluded consistently — good.",
+    "No pagination on list endpoints (to_list(500/1000/2000/20000)) — fine for demo, plan pagination for scale.",
+    "Frontend testIDs are consistent and well-placed across screens — good testability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_baitulmaal.py (new pytest suite)",
+    "/app/test_reports/iteration_1.json (this report)",
+    "/app/test_reports/pytest/pytest_results.xml (JUnit output)"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "100% of tested critical flows"},
+  "seed_data_creation": "No new seed data created. Reused server-seeded users/programs/donors/donations/expenses/tasks. Tests create TEST_-prefixed data (donations/expenses/programs/tasks) which are soft-deletable but remain in DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test suite lives at /app/backend/tests/test_baitulmaal.py. Set EXPO_PUBLIC_BACKEND_URL env var before running pytest. Seed occurs only if manager@alfalah.id absent, so leftover TEST_ data will not affect re-runs but will accumulate over time — consider adding fixture-level cleanup if flakiness appears. Frontend testIDs verified: login-email, login-password, login-submit, fill-demo, fr-tab-program/donation/donor, fr-fab, report-financial/fundraising/donation/expense/program/content, add-task-fab. Google OAuth flow was NOT automated (Emergent-managed).",
+  "rca_of_issue": "N/A — no bugs found."
+}
