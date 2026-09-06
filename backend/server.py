@@ -38,6 +38,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_FALLBACK_MODEL = "gemini-2.5-flash"
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
@@ -1719,48 +1720,74 @@ async def _ai_generate_json(prompt: str) -> dict:
             detail="AI belum dikonfigurasi (GEMINI_API_KEY kosong)."
         )
 
-    max_retries = 3
+    models_to_try = [
+        GEMINI_MODEL,
+        GEMINI_FALLBACK_MODEL,
+    ]
 
-    for attempt in range(max_retries):
-        try:
-            response = await gemini_client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=AI_SYSTEM_PROMPT,
-                    response_mime_type="application/json",
-                    temperature=0.8,
-                ),
-            )
+    for model in models_to_try:
+        for attempt in range(3):
+            try:
+                logger.info(
+                    "Calling Gemini model=%s attempt=%s/3",
+                    model,
+                    attempt + 1,
+                )
 
-            return _extract_json(response.text)
+                response = await gemini_client.aio.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=AI_SYSTEM_PROMPT,
+                        response_mime_type="application/json",
+                        temperature=0.8,
+                    ),
+                )
 
-        except Exception as ex:
-            error_text = str(ex)
+                return _extract_json(response.text)
 
-            # Retry khusus untuk error 503 / UNAVAILABLE
-            if "503" in error_text or "UNAVAILABLE" in error_text:
-                if attempt < max_retries - 1:
-                    wait_time = 2 ** attempt
+            except Exception as ex:
+                error_text = str(ex)
+
+                if "503" in error_text or "UNAVAILABLE" in error_text:
+                    if attempt < 2:
+                        wait_time = 2 ** attempt
+
+                        logger.warning(
+                            "Gemini model %s unavailable. "
+                            "Retry %s/3 dalam %s detik...",
+                            model,
+                            attempt + 1,
+                            wait_time,
+                        )
+
+                        await asyncio.sleep(wait_time)
+                        continue
+
                     logger.warning(
-                        "Gemini sedang unavailable. "
-                        "Retry %s/%s dalam %s detik...",
-                        attempt + 1,
-                        max_retries,
-                        wait_time,
+                        "Gemini model %s gagal setelah 3 percobaan. "
+                        "Mencoba fallback model...",
+                        model,
                     )
-                    await asyncio.sleep(wait_time)
-                    continue
+                    break
 
-            logger.exception("Gemini API call failed")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Gagal memanggil Gemini API: {ex}"
-            )
+                logger.exception(
+                    "Gemini API call failed using model %s",
+                    model,
+                )
+
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Gagal memanggil Gemini API: {ex}"
+                )
 
     raise HTTPException(
         status_code=503,
-        detail="Gemini sedang mengalami permintaan tinggi. Silakan coba lagi beberapa saat."
+        detail=(
+            "Layanan Gemini sedang mengalami permintaan tinggi. "
+            "Model utama dan fallback tidak tersedia. "
+            "Silakan coba lagi beberapa saat."
+        )
     )
 
 
