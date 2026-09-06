@@ -1,2 +1,8 @@
+[project]
+name = "maal-system-alfalah"
+version = "1.0.0"
+description = "Baitul Maal System Alfalah"
+requires-python = ">=3.11"
+
 [tool.vercel]
 entrypoint = "backend.server:app"
