@@ -14,6 +14,7 @@ import json
 import re
 import secrets
 import logging
+import asyncio
 from google import genai
 from google.genai import types
 from pathlib import Path
@@ -1718,34 +1719,49 @@ async def _ai_generate_json(prompt: str) -> dict:
             detail="AI belum dikonfigurasi (GEMINI_API_KEY kosong)."
         )
 
-    try:
-        response = await gemini_client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=AI_SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.8,
-            ),
-        )
-    except Exception as ex:
-        logger.exception("Gemini API call failed")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gagal memanggil Gemini API: {ex}"
-        )
+    max_retries = 3
 
-    try:
-        return _extract_json(response.text)
-    except Exception:
-        logger.error(
-            "Gemini returned invalid JSON: %s",
-            (response.text or "")[:1000]
-        )
-        raise HTTPException(
-            status_code=502,
-            detail="Gemini mengembalikan format JSON tidak valid. Coba lagi."
-        )
+    for attempt in range(max_retries):
+        try:
+            response = await gemini_client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=AI_SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.8,
+                ),
+            )
+
+            return _extract_json(response.text)
+
+        except Exception as ex:
+            error_text = str(ex)
+
+            # Retry khusus untuk error 503 / UNAVAILABLE
+            if "503" in error_text or "UNAVAILABLE" in error_text:
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logger.warning(
+                        "Gemini sedang unavailable. "
+                        "Retry %s/%s dalam %s detik...",
+                        attempt + 1,
+                        max_retries,
+                        wait_time,
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+
+            logger.exception("Gemini API call failed")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Gagal memanggil Gemini API: {ex}"
+            )
+
+    raise HTTPException(
+        status_code=503,
+        detail="Gemini sedang mengalami permintaan tinggi. Silakan coba lagi beberapa saat."
+    )
 
 
 async def _program_context(program_id: Optional[str], role: str) -> str:
