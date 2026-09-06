@@ -27,6 +27,7 @@ export default function Content() {
   const router = useRouter();
   const { user } = useAuth();
   const canAI = user?.role === "manager" || user?.role === "content";
+  const isManager = user?.role === "manager";
   const [mode, setMode] = useState<"list" | "calendar">("list");
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,14 +38,18 @@ export default function Content() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const data = await api.get<any[]>("/tasks", { q: q || undefined, status: status || undefined });
+      const data = await api.get<any[]>("/tasks", {
+        q: q || undefined,
+        status: status || undefined,
+        mine: isManager ? undefined : true,
+      });
       setTasks(data);
     } catch (e: any) {
       setError(e?.message);
     } finally {
       setLoading(false);
     }
-  }, [q, status]);
+  }, [q, status, isManager]);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
@@ -53,8 +58,8 @@ export default function Content() {
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View>
-            <T weight="bold" size={font.xl}>Manajemen Konten</T>
-            <T color={colors.muted} size={font.sm}>{tasks.length} tugas konten</T>
+            <T weight="bold" size={font.xl}>{isManager ? "Manajemen Tugas" : "Tugas Saya"}</T>
+            <T color={colors.muted} size={font.sm}>{tasks.length} {isManager ? "total tugas" : "tugas saya"}</T>
           </View>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             {canAI ? (
@@ -78,7 +83,7 @@ export default function Content() {
           </View>
         </View>
         <View style={{ marginTop: spacing.md }}>
-          <SearchBar value={q} onChangeText={setQ} placeholder="Cari tugas konten..." testID="content-search" />
+          <SearchBar value={q} onChangeText={setQ} placeholder={isManager ? "Cari semua tugas..." : "Cari tugas saya..."} testID="content-search" />
         </View>
       </View>
 
@@ -88,8 +93,11 @@ export default function Content() {
             <ChipRow items={STATUS_FILTERS} value={status} onChange={setStatus} testIDPrefix="status" />
           </View>
           {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={load} /> : tasks.length === 0 ? (
-            <EmptyState icon="albums-outline" title="Belum ada konten"
-              subtitle="Tambahkan tugas konten pertama Anda untuk memulai." />
+            <EmptyState
+              icon="checkbox-outline"
+              title={isManager ? "Belum ada tugas" : "Belum ada tugas untuk Anda"}
+              subtitle={isManager ? "Buat tugas pertama untuk mulai mendelegasikan pekerjaan." : "Tugas yang didelegasikan kepada Anda akan muncul di sini."}
+            />
           ) : (
             <FlatList
               data={tasks}
@@ -104,7 +112,9 @@ export default function Content() {
         <CalendarView tasks={tasks} loading={loading} onTaskPress={(id) => router.push(`/task/${id}`)} />
       )}
 
-      <Fab testID="add-task-fab" onPress={() => router.push("/create/task")} bottom={insets.bottom + 20} />
+      {isManager ? (
+        <Fab testID="add-task-fab" onPress={() => router.push("/create/task")} bottom={insets.bottom + 20} />
+      ) : null}
     </View>
   );
 }

@@ -144,12 +144,68 @@ export default function Home() {
                   keyExtractor={(_, i) => String(i)}
                   contentContainerStyle={{ gap: spacing.md }}
                   renderItem={({ item }) => (
-                    <View style={[styles.attentionCard, { borderLeftColor: item.type === "warning" ? colors.warning : colors.info }]}>
-                      <Ionicons name={item.type === "warning" ? "warning" : "information-circle"} size={20}
-                        color={item.type === "warning" ? colors.warning : colors.info} />
-                      <T size={font.base} weight="medium" style={{ marginTop: spacing.sm }} numberOfLines={3}>{item.text}</T>
-                    </View>
-                  )}
+  <Pressable
+    onPress={() => {
+      const text = String(item.text || "").toLowerCase();
+
+      if (text.includes("tugas melewati deadline")) {
+        router.push("/(tabs)/content");
+        return;
+      }
+
+      if (text.includes("konten menunggu review")) {
+        router.push("/(tabs)/content");
+        return;
+      }
+
+      if (text.includes("donasi menunggu konfirmasi")) {
+        router.push("/(tabs)/fundraising");
+        return;
+      }
+
+      if (text.includes("program") && text.includes("belum mencapai")) {
+        router.push("/(tabs)/fundraising");
+        return;
+      }
+    }}
+    style={[
+      styles.attentionCard,
+      {
+        borderLeftColor:
+          item.type === "warning" ? colors.warning : colors.info,
+      },
+    ]}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+      }}
+    >
+      <Ionicons
+        name={item.type === "warning" ? "warning" : "information-circle"}
+        size={20}
+        color={item.type === "warning" ? colors.warning : colors.info}
+      />
+
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={colors.muted}
+      />
+    </View>
+
+    <T
+      size={font.base}
+      weight="medium"
+      style={{ marginTop: spacing.sm }}
+      numberOfLines={3}
+    >
+      {item.text}
+    </T>
+  </Pressable>
+)}
                 />
               ) : (
                 <Card><T color={colors.muted}>Tidak ada hal yang perlu perhatian. Alhamdulillah 🌙</T></Card>
@@ -158,15 +214,22 @@ export default function Home() {
 
             {/* TODAY */}
             <Section title="Hari Ini">
-              <Kpi icon="today" label="Tugas Hari Ini" value={data.today.tasks_today} color={colors.brand} />
-              <Kpi icon="alarm" label="Tugas Telat" value={data.today.overdue_tasks} color={colors.error} />
-              {data.today.donations_today != null ? (
-                <Kpi icon="cash" label="Donasi Hari Ini" value={formatCompact(data.today.donations_today)} color={colors.success} isText />
-              ) : null}
-              {data.today.active_programs != null ? (
-                <Kpi icon="flag" label="Program Aktif" value={data.today.active_programs} color={colors.brandSecondary} />
-              ) : null}
-            </Section>
+  <Kpi
+    icon="today"
+    label="Tugas Hari Ini"
+    value={data.today.tasks_today}
+    color={colors.brand}
+    onPress={() => router.push("/(tabs)/content")}
+  />
+
+  <Kpi
+    icon="alarm"
+    label="Tugas Telat"
+    value={data.today.overdue_tasks}
+    color={colors.error}
+    onPress={() => router.push("/(tabs)/content")}
+  />
+  </Section>
 
             {/* FUNDRAISING */}
             {data.fundraising ? (
@@ -220,42 +283,129 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Kpi({ icon, label, value, color, isText }:
-  { icon: string; label: string; value: any; color: string; isText?: boolean }) {
+function Kpi({
+  icon,
+  label,
+  value,
+  color,
+  isText,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: any;
+  color: string;
+  isText?: boolean;
+  onPress?: () => void;
+}) {
   return (
-    <View style={styles.kpiCard}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={styles.kpiCard}
+    >
       <View style={[styles.kpiIcon, { backgroundColor: color + "1A" }]}>
         <Ionicons name={icon as any} size={18} color={color} />
       </View>
-      <T weight="bold" size={isText ? font.lg : font["2xl"]} style={{ marginTop: spacing.sm }} numberOfLines={1}>{value}</T>
-      <T color={colors.muted} size={font.sm} numberOfLines={1}>{label}</T>
-    </View>
+
+      <T
+        weight="bold"
+        size={isText ? font.lg : font["2xl"]}
+        style={{ marginTop: spacing.sm }}
+        numberOfLines={1}
+      >
+        {value}
+      </T>
+
+      <T color={colors.muted} size={font.sm} numberOfLines={1}>
+        {label}
+      </T>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: spacing.lg, paddingBottom: spacing.xl,
-    borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    borderBottomLeftRadius: radius.xl,
+    borderBottomRightRadius: radius.xl,
   },
+
   avatarBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.25)",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: spacing.md,
   },
-  balanceCard: { marginTop: spacing.lg, backgroundColor: "rgba(255,255,255,0.10)", borderRadius: radius.md,
-    padding: spacing.lg, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)" },
-  statusPill: { backgroundColor: colors.brandSecondary, borderRadius: radius.pill, paddingHorizontal: spacing.md,
-    paddingVertical: 4, alignSelf: "flex-start" },
-  quickAction: { flex: 1, alignItems: "center" },
-  quickIcon: { width: 56, height: 56, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+
+  balanceCard: {
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+
+  statusPill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: "#fff",
+    alignSelf: "flex-start",
+  },
+
+  quickAction: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 82,
+    padding: spacing.sm,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    ...shadow.sm,
+  },
+
+  quickIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   attentionCard: {
-    width: 220, backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.lg,
-    borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, ...shadow.card,
+    width: 260,
+    minHeight: 120,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderLeftWidth: 4,
+    ...shadow.sm,
   },
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+
+  kpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+  },
+
   kpiCard: {
-    width: "47.7%", flexGrow: 1, backgroundColor: colors.surface, borderRadius: radius.md,
-    padding: spacing.lg, borderWidth: 1, borderColor: colors.border, ...shadow.card,
+    width: "47%",
+    minHeight: 110,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    ...shadow.sm,
   },
-  kpiIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
+
+  kpiIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
