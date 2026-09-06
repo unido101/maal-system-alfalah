@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { View, StyleSheet, ScrollView, Pressable } from "react-native";
-import * as FileSystem from "expo-file-system";
+import { File, Directory, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -42,7 +42,9 @@ const handleExport = async (format: string) => {
     setExporting(format);
 
     const extension =
-      format === "Excel" ? "xlsx" : format.toLowerCase();
+      format === "Excel"
+        ? "xlsx"
+        : format.toLowerCase();
 
     const params = new URLSearchParams();
 
@@ -60,15 +62,9 @@ const handleExport = async (format: string) => {
       `/reports/export/${extension}/${type}` +
       (query ? `?${query}` : "");
 
-    /*
-     * Ambil file dari backend.
-     *
-     * PENTING:
-     * Untuk sementara kita gunakan api.getBinary().
-     * Jika api.ts belum memiliki method ini,
-     * kita tambahkan pada langkah berikutnya.
-     */
+    console.log("Export endpoint:", endpoint);
 
+    // Ambil file dari backend dalam bentuk Base64
     const response = await api.getBinary(endpoint);
 
     const filename =
@@ -76,35 +72,47 @@ const handleExport = async (format: string) => {
         .toISOString()
         .slice(0, 10)}.${extension}`;
 
-    const fileUri =
-      `${FileSystem.cacheDirectory}${filename}`;
+    // Folder cache Expo
+    const directory = new Directory(Paths.cache);
 
-    await FileSystem.writeAsStringAsync(
-      fileUri,
-      response,
-      {
-        encoding: FileSystem.EncodingType.Base64,
-      }
-    );
+    // Buat folder jika belum ada
+    if (!directory.exists) {
+      directory.create();
+    }
 
+    // Buat file baru
+    const file = new File(directory, filename);
+
+    // Jika file dengan nama yang sama sudah ada,
+    // hapus terlebih dahulu.
+    if (file.exists) {
+      file.delete();
+    }
+
+    // Tulis Base64 ke file
+    file.write(response, {
+      encoding: "base64",
+    });
+
+    console.log("File berhasil dibuat:", file.uri);
+
+    // Share file
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri);
+      await Sharing.shareAsync(file.uri);
     } else {
       toast(
         `Laporan ${format} berhasil dibuat`,
         "success"
       );
     }
-
   } catch (e: any) {
-
     console.error("Export error:", e);
 
     toast(
-      e?.message || `Gagal export ${format}`,
+      e?.message ||
+        `Gagal export ${format}`,
       "error"
     );
-
   } finally {
     setExporting(null);
   }
