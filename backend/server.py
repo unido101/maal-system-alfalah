@@ -731,96 +731,384 @@ async def delete_expense(eid: str, user: dict = Depends(require_roles(*FIN_ROLES
 # --------------------------------------------------------------------------
 # Tasks + Briefs + Checklists
 # --------------------------------------------------------------------------
+
+async def get_authorized_task(tid: str, user: dict) -> dict:
+    """Ambil task hanya jika user memiliki akses."""
+
+    t = await db.tasks.find_one(
+        {"id": tid, "deleted_at": None},
+        {"_id": 0}
+    )
+
+    if not t:
+        raise HTTPException(
+            status_code=404,
+            detail="Tugas tidak ditemukan"
+        )
+
+    # Manager memiliki akses penuh
+    if user["role"] == "manager":
+        return t
+
+    # Content & Fundraising hanya boleh mengakses tugas miliknya
+    if t.get("assigned_user_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda tidak memiliki akses ke tugas ini"
+        )
+
+    return t
+
+
 @api.get("/tasks")
-async def list_tasks(user: dict = Depends(get_current_user),
-                     q: Optional[str] = None, status: Optional[str] = None,
-                     category: Optional[str] = None, priority: Optional[str] = None,
-                     assigned_user_id: Optional[str] = None, mine: Optional[bool] = False):
+async def list_tasks(
+    user: dict = Depends(get_current_user),
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    assigned_user_id: Optional[str] = None,
+    mine: Optional[bool] = False
+):
     query = {"deleted_at": None}
+
     if status:
         query["status"] = status
+
     if category:
         query["category"] = category
+
     if priority:
         query["priority"] = priority
-    if assigned_user_id:
-        query["assigned_user_id"] = assigned_user_id
-    if mine:
+
+    # Manager boleh melihat/filter semua tugas
+    if user["role"] == "manager":
+
+        if assigned_user_id:
+            query["assigned_user_id"] = assigned_user_id
+
+        if mine:
+            query["assigned_user_id"] = user["id"]
+
+    # Content & Fundraising hanya melihat tugas yang diberikan kepada mereka
+    else:
         query["assigned_user_id"] = user["id"]
+
     if q:
-        query["title"] = {"$regex": q, "$options": "i"}
-    tasks = await db.tasks.find(query, {"_id": 0}).sort("deadline", 1).to_list(1000)
-    return [await enrich_task(t) for t in tasks]
+        query["title"] = {
+            "$regex": q,
+            "$options": "i"
+        }
+
+    tasks = await db.tasks.find(
+        query,
+        {"_id": 0}
+    ).sort(
+        "deadline", 1
+    ).to_list(1000)
+
+    return [
+        await enrich_task(t)
+        for t in tasks
+    ]
 
 
 @api.post("/tasks")
-async def create_task(inp: TaskInput, user: dict = Depends(get_current_user)):
-    doc = {"id": new_id("task_"), **inp.dict(), "created_by": user["id"],
-           "deleted_at": None, "created_at": now_utc(), "updated_at": now_utc()}
+async def create_task(
+    inp: TaskInput,
+    user: dict = Depends(get_current_user)
+):
+    # Hanya Manager yang boleh mendelegasikan tugas
+    if user["role"] != "manager":
+        if inp.assigned_user_id not in (None, user["id"]):
+            raise HTTPException(
+                status_code=403,
+                detail="Hanya Manager yang dapat mendelegasikan tugas"
+            )
+
+    doc = {
+        "id": new_id("task_"),
+        **inp.dict(),
+        "created_by": user["id"],
+        "deleted_at": None,
+        "created_at": now_utc(),
+        "updated_at": now_utc()
+    }
+
     await db.tasks.insert_one(doc)
-    return await enrich_task(doc, with_details=True)
+
+    return await enrich_task(
+        doc,
+        with_details=True
+    )
 
 
 @api.get("/tasks/{tid}")
-async def get_task(tid: str, user: dict = Depends(get_current_user)):
-    t = await db.tasks.find_one({"id": tid, "deleted_at": None}, {"_id": 0})
-    if not t:
-        raise HTTPException(status_code=404, detail="Tugas tidak ditemukan")
-    return await enrich_task(t, with_details=True)
+async def get_task(
+    tid: str,
+    user: dict = Depends(get_current_user)
+):
+    t = await get_authorized_task(
+        tid,
+        user
+    )
+
+    return await enrich_task(
+        t,
+        with_details=True
+    )
 
 
 @api.put("/tasks/{tid}")
-async def update_task(tid: str, inp: TaskInput, user: dict = Depends(get_current_user)):
-    await db.tasks.update_one({"id": tid}, {"$set": {**inp.dict(), "updated_at": now_utc()}})
-    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
-    if not t:
-        raise HTTPException(status_code=404, detail="Tugas tidak ditemukan")
-    return await enrich_task(t, with_details=True)
+async def update_task(
+    tid: str,
+    inp: TaskInput,
+    user: dict = Depends(get_current_user)
+):
+    # Pastikan task memang boleh diakses user
+    t = await get_authorized_task(
+        tid,
+        user
+    )
+
+    # Non-manager tidak boleh mengganti PIC
+    if user["role"] != "manager":
+        if inp.assigned_user_id != t.get("assigned_user_id"):
+            raise HTTPException(
+                status_code=403,
+                detail="Hanya Manager yang dapat mengubah PIC tugas"
+            )
+
+    await db.tasks.update_one(
+        {"id": tid},
+        {
+            "$set": {
+                **inp.dict(),
+                "updated_at": now_utc()
+            }
+        }
+    )
+
+    t = await get_authorized_task(
+        tid,
+        user
+    )
+
+    return await enrich_task(
+        t,
+        with_details=True
+    )
 
 
 @api.patch("/tasks/{tid}/status")
-async def update_task_status(tid: str, inp: StatusUpdate, user: dict = Depends(get_current_user)):
-    await db.tasks.update_one({"id": tid}, {"$set": {"status": inp.status, "updated_at": now_utc()}})
-    t = await db.tasks.find_one({"id": tid}, {"_id": 0})
-    if not t:
-        raise HTTPException(status_code=404, detail="Tugas tidak ditemukan")
-    return await enrich_task(t, with_details=True)
+async def update_task_status(
+    tid: str,
+    inp: StatusUpdate,
+    user: dict = Depends(get_current_user)
+):
+    # Pastikan user memiliki akses
+    await get_authorized_task(
+        tid,
+        user
+    )
+
+    await db.tasks.update_one(
+        {"id": tid},
+        {
+            "$set": {
+                "status": inp.status,
+                "updated_at": now_utc()
+            }
+        }
+    )
+
+    t = await get_authorized_task(
+        tid,
+        user
+    )
+
+    return await enrich_task(
+        t,
+        with_details=True
+    )
 
 
 @api.delete("/tasks/{tid}")
-async def delete_task(tid: str, user: dict = Depends(get_current_user)):
-    await db.tasks.update_one({"id": tid}, {"$set": {"deleted_at": now_utc()}})
+async def delete_task(
+    tid: str,
+    user: dict = Depends(get_current_user)
+):
+    # Hanya Manager yang boleh menghapus task
+    if user["role"] != "manager":
+        raise HTTPException(
+            status_code=403,
+            detail="Hanya Manager yang dapat menghapus tugas"
+        )
+
+    await get_authorized_task(
+        tid,
+        user
+    )
+
+    await db.tasks.update_one(
+        {"id": tid},
+        {
+            "$set": {
+                "deleted_at": now_utc(),
+                "updated_at": now_utc()
+            }
+        }
+    )
+
     return {"ok": True}
 
 
 @api.put("/tasks/{tid}/brief")
-async def upsert_brief(tid: str, inp: BriefInput, user: dict = Depends(get_current_user)):
-    await db.briefs.update_one({"task_id": tid},
-                               {"$set": {**inp.dict(), "task_id": tid, "updated_at": now_utc()}}, upsert=True)
-    return {"ok": True, **inp.dict()}
+async def upsert_brief(
+    tid: str,
+    inp: BriefInput,
+    user: dict = Depends(get_current_user)
+):
+    await get_authorized_task(
+        tid,
+        user
+    )
+
+    await db.briefs.update_one(
+        {"task_id": tid},
+        {
+            "$set": {
+                **inp.dict(),
+                "task_id": tid,
+                "updated_at": now_utc()
+            }
+        },
+        upsert=True
+    )
+
+    return {
+        "ok": True,
+        **inp.dict()
+    }
 
 
 @api.post("/tasks/{tid}/checklist")
-async def add_checklist(tid: str, inp: ChecklistItemInput, user: dict = Depends(get_current_user)):
-    doc = {"id": new_id("chk_"), "task_id": tid, "item": inp.item,
-           "completed": False, "completed_at": None, "deleted_at": None, "created_at": now_utc()}
+async def add_checklist(
+    tid: str,
+    inp: ChecklistItemInput,
+    user: dict = Depends(get_current_user)
+):
+    await get_authorized_task(
+        tid,
+        user
+    )
+
+    doc = {
+        "id": new_id("chk_"),
+        "task_id": tid,
+        "item": inp.item,
+        "completed": False,
+        "completed_at": None,
+        "deleted_at": None,
+        "created_at": now_utc()
+    }
+
     await db.checklist_items.insert_one(doc)
-    return {"id": doc["id"], "item": doc["item"], "completed": False, "completed_at": None}
+
+    return {
+        "id": doc["id"],
+        "item": doc["item"],
+        "completed": False,
+        "completed_at": None
+    }
 
 
 @api.patch("/tasks/{tid}/checklist/{cid}")
-async def toggle_checklist(tid: str, cid: str, inp: ChecklistToggle, user: dict = Depends(get_current_user)):
+async def toggle_checklist(
+    tid: str,
+    cid: str,
+    inp: ChecklistToggle,
+    user: dict = Depends(get_current_user)
+):
+    await get_authorized_task(
+        tid,
+        user
+    )
+
+    item = await db.checklist_items.find_one(
+        {
+            "id": cid,
+            "task_id": tid,
+            "deleted_at": None
+        },
+        {"_id": 0}
+    )
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Checklist tidak ditemukan"
+        )
+
     await db.checklist_items.update_one(
-        {"id": cid}, {"$set": {"completed": inp.completed,
-                               "completed_at": now_utc() if inp.completed else None}})
+        {
+            "id": cid,
+            "task_id": tid
+        },
+        {
+            "$set": {
+                "completed": inp.completed,
+                "completed_at": (
+                    now_utc()
+                    if inp.completed
+                    else None
+                )
+            }
+        }
+    )
+
     return {"ok": True}
 
 
 @api.delete("/tasks/{tid}/checklist/{cid}")
-async def delete_checklist(tid: str, cid: str, user: dict = Depends(get_current_user)):
-    await db.checklist_items.update_one({"id": cid}, {"$set": {"deleted_at": now_utc()}})
-    return {"ok": True}
+async def delete_checklist(
+    tid: str,
+    cid: str,
+    user: dict = Depends(get_current_user)
+):
+    await get_authorized_task(
+        tid,
+        user
+    )
 
+    item = await db.checklist_items.find_one(
+        {
+            "id": cid,
+            "task_id": tid,
+            "deleted_at": None
+        },
+        {"_id": 0}
+    )
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Checklist tidak ditemukan"
+        )
+
+    await db.checklist_items.update_one(
+        {
+            "id": cid,
+            "task_id": tid
+        },
+        {
+            "$set": {
+                "deleted_at": now_utc()
+            }
+        }
+    )
+
+    return {"ok": True}
 
 # --------------------------------------------------------------------------
 # Finance summary
