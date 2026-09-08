@@ -141,14 +141,40 @@ class DonorInput(BaseModel):
     notes: Optional[str] = ""
 
 
+class LeadInput(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    organization: Optional[str] = ""
+    purpose: Optional[str] = ""
+    source: Optional[str] = "Tamu Masjid"
+    interest: Optional[str] = ""
+    status: str = "New"
+    notes: Optional[str] = ""
+    date: Optional[str] = None
+    pic_id: Optional[str] = None
+
 class DonationInput(BaseModel):
     donor_id: Optional[str] = None
     donor_name: Optional[str] = None
     donor_phone: Optional[str] = None
     program_id: Optional[str] = None
     date: Optional[str] = None
+
+    # Jenis donasi:
+    # Sedekah, Zakat, Infak, Wakaf, Non-Tunai
     type: str = "Sedekah"
+
+    # Untuk donasi uang
     amount: float = 0
+
+    # Untuk donasi barang
+    item_name: Optional[str] = None
+    item_description: Optional[str] = ""
+    item_quantity: float = 0
+    item_unit: Optional[str] = ""
+    item_condition: Optional[str] = ""
+    estimated_value: float = 0
+
     payment_method: str = "Cash"
     payment_status: str = "Paid"
     notes: Optional[str] = ""
@@ -430,12 +456,28 @@ async def enrich_donation(d: dict) -> dict:
         p = await db.programs.find_one({"id": d["program_id"]}, {"_id": 0, "name": 1})
         program_name = p["name"] if p else None
     return {
-        "id": d["id"], "donor_id": d.get("donor_id"), "donor_name": donor_name,
-        "program_id": d.get("program_id"), "program_name": program_name,
-        "date": iso(d.get("date")), "type": d.get("type"), "amount": d.get("amount"),
-        "payment_method": d.get("payment_method"), "payment_status": d.get("payment_status"),
-        "notes": d.get("notes"), "created_at": iso(d.get("created_at")),
-    }
+    "id": d["id"],
+    "donor_id": d.get("donor_id"),
+    "donor_name": donor_name,
+    "program_id": d.get("program_id"),
+    "program_name": program_name,
+    "date": iso(d.get("date")),
+    "type": d.get("type"),
+    "amount": d.get("amount", 0),
+
+    "item_name": d.get("item_name"),
+    "item_description": d.get("item_description"),
+    "item_quantity": d.get("item_quantity", 0),
+    "item_unit": d.get("item_unit"),
+    "item_condition": d.get("item_condition"),
+    "estimated_value": d.get("estimated_value", 0),
+
+    "payment_method": d.get("payment_method"),
+    "payment_status": d.get("payment_status"),
+    "notes": d.get("notes"),
+    "pic_id": d.get("pic_id"),
+    "created_at": iso(d.get("created_at")),
+}
 
 
 async def enrich_expense(e: dict) -> dict:
@@ -610,6 +652,260 @@ async def delete_donor(did: str, user: dict = Depends(require_roles(*DONATION_RO
 
 
 # --------------------------------------------------------------------------
+# Leads / Tamu
+# --------------------------------------------------------------------------
+
+@api.get("/leads")
+async def list_leads(
+    user: dict = Depends(require_roles("manager", "fundraising")),
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    source: Optional[str] = None,
+    interest: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+):
+    query = {"deleted_at": None}
+
+    if status:
+        query["status"] = status
+
+    if source:
+        query["source"] = source
+
+    if interest:
+        query["interest"] = interest
+
+    if start or end:
+        rng = {}
+        if start:
+            rng["$gte"] = start
+        if end:
+            rng["$lte"] = end
+        query["date"] = rng
+
+    if q:
+        query["$or"] = [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"phone": {"$regex": q, "$options": "i"}},
+            {"organization": {"$regex": q, "$options": "i"}},
+        ]
+
+    leads = await db.leads.find(
+        query,
+        {"_id": 0}
+    ).sort("date", -1).to_list(5000)
+
+    result = []
+
+    for lead in leads:
+        pic_name = None
+
+        if lead.get("pic_id"):
+            pic = await db.users.find_one(
+                {"id": lead["pic_id"]},
+                {"_id": 0, "name": 1}
+            )
+            pic_name = pic["name"] if pic else None
+
+        result.append({
+            "id": lead["id"],
+            "name": lead.get("name"),
+            "phone": lead.get("phone"),
+            "organization": lead.get("organization"),
+            "purpose": lead.get("purpose"),
+            "source": lead.get("source"),
+            "interest": lead.get("interest"),
+            "status": lead.get("status"),
+            "notes": lead.get("notes"),
+            "date": iso(lead.get("date")),
+            "pic_id": lead.get("pic_id"),
+            "pic_name": pic_name,
+            "created_at": iso(lead.get("created_at")),
+            "updated_at": iso(lead.get("updated_at")),
+        })
+
+    return result
+
+
+@api.post("/leads")
+async def create_lead(
+    inp: LeadInput,
+    user: dict = Depends(require_roles("manager", "fundraising"))
+):
+    pic_id = inp.pic_id or user["id"]
+
+    # Fundraising hanya boleh membuat lead atas dirinya sendiri.
+    if user["role"] != "manager" and pic_id != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda hanya dapat membuat lead untuk diri sendiri"
+        )
+
+    doc = {
+        "id": new_id("lead_"),
+        "name": inp.name,
+        "phone": inp.phone,
+        "organization": inp.organization,
+        "purpose": inp.purpose,
+        "source": inp.source,
+        "interest": inp.interest,
+        "status": inp.status,
+        "notes": inp.notes,
+        "date": inp.date or now_utc().isoformat(),
+        "pic_id": pic_id,
+        "deleted_at": None,
+        "created_at": now_utc(),
+        "updated_at": now_utc(),
+    }
+
+    await db.leads.insert_one(doc)
+
+    return {
+        "id": doc["id"],
+        "name": doc["name"],
+        "phone": doc["phone"],
+        "organization": doc["organization"],
+        "purpose": doc["purpose"],
+        "source": doc["source"],
+        "interest": doc["interest"],
+        "status": doc["status"],
+        "notes": doc["notes"],
+        "date": iso(doc["date"]),
+        "pic_id": doc["pic_id"],
+        "created_at": iso(doc["created_at"]),
+        "updated_at": iso(doc["updated_at"]),
+    }
+
+
+@api.get("/leads/{lid}")
+async def get_lead(
+    lid: str,
+    user: dict = Depends(require_roles("manager", "fundraising"))
+):
+    lead = await db.leads.find_one(
+        {"id": lid, "deleted_at": None},
+        {"_id": 0}
+    )
+
+    if not lead:
+        raise HTTPException(
+            status_code=404,
+            detail="Lead tidak ditemukan"
+        )
+
+    if user["role"] != "manager" and lead.get("pic_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda tidak memiliki akses ke lead ini"
+        )
+
+    pic_name = None
+
+    if lead.get("pic_id"):
+        pic = await db.users.find_one(
+            {"id": lead["pic_id"]},
+            {"_id": 0, "name": 1}
+        )
+        pic_name = pic["name"] if pic else None
+
+    return {
+        "id": lead["id"],
+        "name": lead.get("name"),
+        "phone": lead.get("phone"),
+        "organization": lead.get("organization"),
+        "purpose": lead.get("purpose"),
+        "source": lead.get("source"),
+        "interest": lead.get("interest"),
+        "status": lead.get("status"),
+        "notes": lead.get("notes"),
+        "date": iso(lead.get("date")),
+        "pic_id": lead.get("pic_id"),
+        "pic_name": pic_name,
+        "created_at": iso(lead.get("created_at")),
+        "updated_at": iso(lead.get("updated_at")),
+    }
+
+
+@api.put("/leads/{lid}")
+async def update_lead(
+    lid: str,
+    inp: LeadInput,
+    user: dict = Depends(require_roles("manager", "fundraising"))
+):
+    lead = await db.leads.find_one(
+        {"id": lid, "deleted_at": None},
+        {"_id": 0}
+    )
+
+    if not lead:
+        raise HTTPException(
+            status_code=404,
+            detail="Lead tidak ditemukan"
+        )
+
+    if user["role"] != "manager" and lead.get("pic_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Anda tidak memiliki akses ke lead ini"
+        )
+
+    pic_id = inp.pic_id or lead.get("pic_id") or user["id"]
+
+    if user["role"] != "manager" and pic_id != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Hanya Manager yang dapat mengubah PIC lead"
+        )
+
+    upd = {
+        **inp.dict(),
+        "pic_id": pic_id,
+        "updated_at": now_utc(),
+    }
+
+    await db.leads.update_one(
+        {"id": lid},
+        {"$set": upd}
+    )
+
+    updated = await db.leads.find_one(
+        {"id": lid},
+        {"_id": 0}
+    )
+
+    return updated
+
+
+@api.delete("/leads/{lid}")
+async def delete_lead(
+    lid: str,
+    user: dict = Depends(require_roles("manager"))
+):
+    lead = await db.leads.find_one(
+        {"id": lid, "deleted_at": None},
+        {"_id": 0}
+    )
+
+    if not lead:
+        raise HTTPException(
+            status_code=404,
+            detail="Lead tidak ditemukan"
+        )
+
+    await db.leads.update_one(
+        {"id": lid},
+        {
+            "$set": {
+                "deleted_at": now_utc(),
+                "updated_at": now_utc(),
+            }
+        }
+    )
+
+    return {"ok": True}
+
+# --------------------------------------------------------------------------
 # Donations
 # --------------------------------------------------------------------------
 @api.get("/donations")
@@ -649,11 +945,30 @@ async def create_donation(inp: DonationInput, user: dict = Depends(require_roles
         await db.donors.insert_one(donor_doc)
         donor_id = donor_doc["id"]
     doc = {
-        "id": new_id("don_"), "donor_id": donor_id, "program_id": inp.program_id,
-        "date": inp.date or now_utc().isoformat(), "type": inp.type, "amount": inp.amount,
-        "payment_method": inp.payment_method, "payment_status": inp.payment_status,
-        "notes": inp.notes, "pic_id": user["id"], "deleted_at": None, "created_at": now_utc(),
-    }
+    "id": new_id("don_"),
+    "donor_id": donor_id,
+    "program_id": inp.program_id,
+    "date": inp.date or now_utc().isoformat(),
+    "type": inp.type,
+
+    # Donasi uang
+    "amount": inp.amount,
+
+    # Donasi barang
+    "item_name": inp.item_name,
+    "item_description": inp.item_description,
+    "item_quantity": inp.item_quantity,
+    "item_unit": inp.item_unit,
+    "item_condition": inp.item_condition,
+    "estimated_value": inp.estimated_value,
+
+    "payment_method": inp.payment_method,
+    "payment_status": inp.payment_status,
+    "notes": inp.notes,
+    "pic_id": user["id"],
+    "deleted_at": None,
+    "created_at": now_utc(),
+}
     await db.donations.insert_one(doc)
     return await enrich_donation(doc)
 
@@ -1287,6 +1602,19 @@ def _export_rows(report_data: dict):
             "notes",
         ],
 
+"lead": [
+    "date",
+    "name",
+    "phone",
+    "organization",
+    "purpose",
+    "source",
+    "interest",
+    "status",
+    "pic_name",
+    "notes",
+],
+
         "program": [
             "name",
             "category",
@@ -1821,8 +2149,8 @@ async def reports(report_type: str, user: dict = Depends(get_current_user),
                   status: Optional[str] = None):
     if report_type in ("financial", "expense") and user["role"] != "manager":
         raise HTTPException(status_code=403, detail="Akses ditolak")
-    if report_type in ("fundraising", "donation", "program") and user["role"] not in ("manager", "fundraising"):
-        raise HTTPException(status_code=403, detail="Akses ditolak")
+    if report_type in ("fundraising", "donation", "program", "lead") and user["role"] not in ("manager", "fundraising"):
+    raise HTTPException(status_code=403, detail="Akses ditolak")
 
     def in_range(dt):
         s = iso(dt)
@@ -1859,6 +2187,55 @@ async def reports(report_type: str, user: dict = Depends(get_current_user),
         rows = [await enrich_donation(d) for d in dons if (not (start or end)) or in_range(d.get("date"))]
         paid = [r for r in rows if r["payment_status"] == "Paid"]
         return {"type": report_type, "total": sum(r["amount"] for r in paid), "count": len(rows), "rows": rows}
+
+    if report_type == "lead":
+        query = {"deleted_at": None}
+
+        if status:
+            query["status"] = status
+
+        if category:
+            query["source"] = category
+
+        leads = await db.leads.find(
+            query,
+            {"_id": 0}
+        ).sort("date", -1).to_list(10000)
+
+        rows = []
+
+        for lead in leads:
+            if (start or end) and not in_range(lead.get("date")):
+                continue
+
+            pic_name = None
+
+            if lead.get("pic_id"):
+                pic = await db.users.find_one(
+                    {"id": lead["pic_id"]},
+                    {"_id": 0, "name": 1}
+                )
+                pic_name = pic["name"] if pic else None
+
+            rows.append({
+                "id": lead["id"],
+                "date": iso(lead.get("date")),
+                "name": lead.get("name"),
+                "phone": lead.get("phone"),
+                "organization": lead.get("organization"),
+                "purpose": lead.get("purpose"),
+                "source": lead.get("source"),
+                "interest": lead.get("interest"),
+                "status": lead.get("status"),
+                "pic_name": pic_name,
+                "notes": lead.get("notes"),
+            })
+
+        return {
+            "type": "lead",
+            "count": len(rows),
+            "rows": rows,
+        }
 
     if report_type == "program":
         progs = await db.programs.find({"deleted_at": None}, {"_id": 0}).to_list(500)
