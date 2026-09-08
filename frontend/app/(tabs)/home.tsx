@@ -23,6 +23,13 @@ const QUICK_ACTIONS: Record<string, { key: string; label: string; icon: string; 
     { key: "task", label: "Tugas", icon: "add-circle", color: colors.brand },
     { key: "donation", label: "Donasi", icon: "heart", color: colors.success },
     { key: "program", label: "Program", icon: "flag", color: colors.brandSecondary },
+    { key: "donation", label: "Input Donasi", icon: "gift-outline",color: "#...",  },
+  {   key: "lead",
+    label: "Input Tamu",
+    icon: "person-add-outline",
+    color: "#0F766E",
+  },
+
   ],
   content: [
     { key: "task", label: "Tugas", icon: "add-circle", color: colors.brand },
