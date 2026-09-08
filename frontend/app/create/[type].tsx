@@ -43,6 +43,7 @@ const TITLES: Record<string, string> = {
   program: "Program Baru",
   expense: "Pengeluaran Baru",
   donor: "Donatur Baru",
+  lead: "Input Tamu",
 };
 
 export default function CreateScreen() {
@@ -109,10 +110,14 @@ export default function CreateScreen() {
           setPrograms(p);
         }
 
-        if (type === "task" || type === "program") {
-          const u = await api.get<any[]>("/users");
-          setUsers(u);
-        }
+        if (
+  type === "task" ||
+  type === "program" ||
+  type === "lead"
+) {
+  const u = await api.get<any[]>("/users");
+  setUsers(u);
+}
 
         if (type === "donation") {
           const d = await api.get<any[]>("/donors");
@@ -319,6 +324,30 @@ export default function CreateScreen() {
         });
 
         toast("Donatur berhasil ditambahkan", "success");
+      }
+
+      // =========================================================
+      // LEAD / TAMU
+      // =========================================================
+      else if (type === "lead") {
+        if (!form.name?.trim()) {
+          throw new Error("Nama tamu wajib diisi");
+        }
+
+        await api.post("/leads", {
+          name: form.name.trim(),
+          phone: form.phone || "",
+          organization: form.organization || "",
+          purpose: form.purpose || "",
+          source: form.source || "Tamu Masjid",
+          interest: form.interest || "Lainnya",
+          status: form.lead_status || "Input",
+          notes: form.notes || "",
+          pic_id: form.pic_id || null,
+          date: form.date,
+        });
+
+        toast("Lead berhasil dicatat", "success");
       }
 
       router.back();
@@ -992,6 +1021,141 @@ export default function CreateScreen() {
               />
             </>
           )}
+
+          {/* =====================================================
+              LEAD / TAMU
+          ===================================================== */}
+          {type === "lead" && (
+            <>
+              <TextField
+                label="Nama Tamu / Lead"
+                value={form.name || ""}
+                onChangeText={(v) => set("name", v)}
+                placeholder="Nama lengkap"
+                testID="f-lead-name"
+              />
+
+              <TextField
+                label="WhatsApp"
+                value={form.phone || ""}
+                onChangeText={(v) => set("phone", v)}
+                keyboardType="phone-pad"
+                placeholder="08xxx"
+                testID="f-lead-phone"
+              />
+
+              <TextField
+                label="Organisasi / Instansi"
+                value={form.organization || ""}
+                onChangeText={(v) =>
+                  set("organization", v)
+                }
+                placeholder="Nama organisasi (opsional)"
+                testID="f-lead-organization"
+              />
+
+              <TextField
+                label="Keperluan"
+                value={form.purpose || ""}
+                onChangeText={(v) =>
+                  set("purpose", v)
+                }
+                placeholder="Keperluan / kebutuhan tamu"
+                multiline
+                testID="f-lead-purpose"
+              />
+
+              <SelectField
+                label="Sumber"
+                value={
+                  form.source || "Tamu Masjid"
+                }
+                options={[
+                  "Tamu Masjid",
+                  "WhatsApp",
+                  "Instagram",
+                  "Kajian",
+                  "Program",
+                  "Donatur",
+                  "Lainnya",
+                ]}
+                onSelect={(v) =>
+                  set("source", v)
+                }
+                testID="f-lead-source"
+              />
+
+              <SelectField
+                label="Ketertarikan"
+                value={
+                  form.interest || "Lainnya"
+                }
+                options={[
+                  "Zakat",
+                  "Infak",
+                  "Sedekah",
+                  "Wakaf",
+                  "Program",
+                  "Layanan Masjid",
+                  "Lainnya",
+                ]}
+                onSelect={(v) =>
+                  set("interest", v)
+                }
+                testID="f-lead-interest"
+              />
+
+              <SelectField
+                label="Status"
+                value={
+                  form.lead_status || "Input"
+                }
+                options={[
+                  "Input",
+                  "Follow Up",
+                  "Qualified",
+                  "Converted",
+                  "Lost",
+                ]}
+                onSelect={(v) =>
+                  set("lead_status", v)
+                }
+                testID="f-lead-status"
+              />
+
+              <EntitySelect
+                label="PIC"
+                value={form.pic_id}
+                items={users}
+                onSelect={(v) =>
+                  set("pic_id", v)
+                }
+                allowNone
+                testID="f-lead-pic"
+              />
+
+              <DateField
+                label="Tanggal"
+                value={form.date}
+                onChange={(v) =>
+                  set("date", v)
+                }
+                testID="f-lead-date"
+              />
+
+              <TextField
+                label="Catatan"
+                value={form.notes || ""}
+                onChangeText={(v) =>
+                  set("notes", v)
+                }
+                placeholder="Catatan follow up"
+                multiline
+                testID="f-lead-notes"
+              />
+            </>
+          )}
+
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1015,6 +1179,7 @@ export default function CreateScreen() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   header: {
