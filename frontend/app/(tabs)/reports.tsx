@@ -17,6 +17,7 @@ import { formatRupiah, formatCompact, formatDate } from "@/src/format";
 const ALL_REPORTS = [
   { key: "fundraising", label: "Fundraising", roles: ["manager", "fundraising"] },
   { key: "donation", label: "Donasi", roles: ["manager", "fundraising"] },
+  { key: "lead", label: "Lead / Tamu", roles: ["manager", "fundraising"] },
   { key: "program", label: "Program", roles: ["manager", "fundraising"] },
   { key: "expense", label: "Pengeluaran", roles: ["manager"] },
   { key: "financial", label: "Keuangan", roles: ["manager"] },
@@ -283,6 +284,85 @@ function ReportBody({ type, data }: { type: string; data: any }) {
               </View>
             ))}
         </Card>
+      </View>
+    );
+  }
+
+    if (type === "lead") {
+    const rows = data.rows || [];
+
+    return (
+      <View style={{ gap: spacing.md }}>
+        <Card>
+          <T color={colors.muted}>Total Lead / Tamu</T>
+          <T weight="bold" size={font["2xl"]} color={colors.brand}>
+            {data.count || 0}
+          </T>
+          <T size={font.sm} color={colors.muted}>
+            data lead
+          </T>
+        </Card>
+
+        {rows.length === 0 ? (
+          <EmptyState title="Belum ada lead pada rentang ini" />
+        ) : (
+          rows.map((r: any) => (
+            <Card key={r.id}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                }}
+              >
+                <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                  <T weight="semibold" size={font.base}>
+                    {r.name || "Tanpa Nama"}
+                  </T>
+
+                  {r.phone ? (
+                    <T size={font.sm} color={colors.muted}>
+                      {r.phone}
+                    </T>
+                  ) : null}
+
+                  {r.organization ? (
+                    <T size={font.sm} color={colors.muted}>
+                      {r.organization}
+                    </T>
+                  ) : null}
+
+                  <T size={font.sm} color={colors.muted}>
+                    {r.interest || "Lainnya"}
+                    {r.source ? ` • ${r.source}` : ""}
+                  </T>
+
+                  <T size={font.sm} color={colors.muted}>
+                    {formatDate(r.date)}
+                  </T>
+
+                  {r.purpose ? (
+                    <T
+                      size={font.sm}
+                      color={colors.onSurfaceSecondary}
+                      style={{ marginTop: spacing.xs }}
+                    >
+                      {r.purpose}
+                    </T>
+                  ) : null}
+
+                  {r.pic_name ? (
+                    <T size={font.sm} color={colors.muted}>
+                      PIC: {r.pic_name}
+                    </T>
+                  ) : null}
+                </View>
+
+                <StatusBadge status={r.status} />
+              </View>
+            </Card>
+          ))
+        )}
       </View>
     );
   }
