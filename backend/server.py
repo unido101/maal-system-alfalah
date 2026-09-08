@@ -2143,50 +2143,100 @@ async def export_report(
     )
 
 @api.get("/reports/{report_type}")
-async def reports(report_type: str, user: dict = Depends(get_current_user),
-                  start: Optional[str] = None, end: Optional[str] = None,
-                  program_id: Optional[str] = None, category: Optional[str] = None,
-                  status: Optional[str] = None):
+async def reports(
+    report_type: str,
+    user: dict = Depends(get_current_user),
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    program_id: Optional[str] = None,
+    category: Optional[str] = None,
+    status: Optional[str] = None
+):
     if report_type in ("financial", "expense") and user["role"] != "manager":
         raise HTTPException(status_code=403, detail="Akses ditolak")
+
     if report_type in ("fundraising", "donation", "program", "lead") and user["role"] not in ("manager", "fundraising"):
-    raise HTTPException(status_code=403, detail="Akses ditolak")
+        raise HTTPException(status_code=403, detail="Akses ditolak")
 
     def in_range(dt):
         s = iso(dt)
         if not s:
             return False
+
         d = s[:10]
+
         if start and d < start:
             return False
+
         if end and d > end:
             return False
+
         return True
 
     if report_type == "financial":
         fin = await finance_summary()
-        return {"type": "financial", "summary": fin}
+        return {
+            "type": "financial",
+            "summary": fin
+        }
 
     if report_type == "expense":
         query = {"deleted_at": None}
+
         if program_id:
             query["program_id"] = program_id
+
         if category:
             query["category"] = category
-        exps = await db.expenses.find(query, {"_id": 0}).to_list(5000)
-        rows = [await enrich_expense(e) for e in exps if (not (start or end)) or in_range(e.get("date"))]
-        return {"type": "expense", "total": sum(r["amount"] for r in rows), "rows": rows}
+
+        exps = await db.expenses.find(
+            query,
+            {"_id": 0}
+        ).to_list(5000)
+
+        rows = [
+            await enrich_expense(e)
+            for e in exps
+            if (not (start or end)) or in_range(e.get("date"))
+        ]
+
+        return {
+            "type": "expense",
+            "total": sum(r["amount"] for r in rows),
+            "rows": rows
+        }
 
     if report_type in ("fundraising", "donation"):
         query = {"deleted_at": None}
+
         if program_id:
             query["program_id"] = program_id
+
         if status:
             query["payment_status"] = status
-        dons = await db.donations.find(query, {"_id": 0}).to_list(10000)
-        rows = [await enrich_donation(d) for d in dons if (not (start or end)) or in_range(d.get("date"))]
-        paid = [r for r in rows if r["payment_status"] == "Paid"]
-        return {"type": report_type, "total": sum(r["amount"] for r in paid), "count": len(rows), "rows": rows}
+
+        dons = await db.donations.find(
+            query,
+            {"_id": 0}
+        ).to_list(10000)
+
+        rows = [
+            await enrich_donation(d)
+            for d in dons
+            if (not (start or end)) or in_range(d.get("date"))
+        ]
+
+        paid = [
+            r for r in rows
+            if r["payment_status"] == "Paid"
+        ]
+
+        return {
+            "type": report_type,
+            "total": sum(r["amount"] for r in paid),
+            "count": len(rows),
+            "rows": rows
+        }
 
     if report_type == "lead":
         query = {"deleted_at": None}
@@ -2215,6 +2265,7 @@ async def reports(report_type: str, user: dict = Depends(get_current_user),
                     {"id": lead["pic_id"]},
                     {"_id": 0, "name": 1}
                 )
+
                 pic_name = pic["name"] if pic else None
 
             rows.append({
@@ -2238,24 +2289,57 @@ async def reports(report_type: str, user: dict = Depends(get_current_user),
         }
 
     if report_type == "program":
-        progs = await db.programs.find({"deleted_at": None}, {"_id": 0}).to_list(500)
-        rows = [await enrich_program(p) for p in progs]
-        return {"type": "program", "rows": rows}
+        progs = await db.programs.find(
+            {"deleted_at": None},
+            {"_id": 0}
+        ).to_list(500)
+
+        rows = [
+            await enrich_program(p)
+            for p in progs
+        ]
+
+        return {
+            "type": "program",
+            "rows": rows
+        }
 
     if report_type == "content":
         query = {"deleted_at": None}
+
         if category:
             query["category"] = category
+
         if status:
             query["status"] = status
-        tasks = await db.tasks.find(query, {"_id": 0}).to_list(5000)
-        rows = [await enrich_task(t) for t in tasks if (not (start or end)) or in_range(t.get("deadline"))]
+
+        tasks = await db.tasks.find(
+            query,
+            {"_id": 0}
+        ).to_list(5000)
+
+        rows = [
+            await enrich_task(t)
+            for t in tasks
+            if (not (start or end)) or in_range(t.get("deadline"))
+        ]
+
         by_status = {}
+
         for r in rows:
             by_status[r["status"]] = by_status.get(r["status"], 0) + 1
-        return {"type": "content", "count": len(rows), "by_status": by_status, "rows": rows}
 
-    raise HTTPException(status_code=404, detail="Jenis laporan tidak dikenal")
+        return {
+            "type": "content",
+            "count": len(rows),
+            "by_status": by_status,
+            "rows": rows
+        }
+
+    raise HTTPException(
+        status_code=404,
+        detail="Jenis laporan tidak dikenal"
+    )
 # ==========================================================================
 # ALFALAH AI CONTENT ASSISTANT
 # ==========================================================================
