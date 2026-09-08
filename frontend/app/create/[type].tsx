@@ -10,7 +10,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+
 import { api } from "@/src/api";
+
 import {
   T,
   TextField,
@@ -21,7 +23,9 @@ import {
   useToast,
   ScreenHeader,
 } from "@/src/ui";
+
 import { colors, spacing, radius, font } from "@/src/theme";
+
 import {
   TASK_CATEGORIES,
   TASK_PRIORITIES,
@@ -54,8 +58,11 @@ export default function CreateScreen() {
 
   const [form, setForm] = useState<any>({
     date: new Date().toISOString(),
+
     priority: "Medium",
+
     status: type === "program" ? "Active" : "Draft",
+
     category:
       type === "task"
         ? "Feed"
@@ -65,7 +72,6 @@ export default function CreateScreen() {
 
     // Donation
     type: "Sedekah",
-    donationMode: "Uang",
     payment_method: "Cash",
     payment_status: "Paid",
 
@@ -120,6 +126,9 @@ export default function CreateScreen() {
     setSaving(true);
 
     try {
+      // =========================================================
+      // TASK
+      // =========================================================
       if (type === "task") {
         if (!form.title?.trim()) {
           throw new Error("Judul wajib diisi");
@@ -140,6 +149,9 @@ export default function CreateScreen() {
         toast("Tugas berhasil dibuat", "success");
       }
 
+      // =========================================================
+      // PROGRAM
+      // =========================================================
       else if (type === "program") {
         if (!form.name?.trim()) {
           throw new Error("Nama program wajib diisi");
@@ -159,13 +171,10 @@ export default function CreateScreen() {
         toast("Program berhasil dibuat", "success");
       }
 
+      // =========================================================
+      // DONATION
+      // =========================================================
       else if (type === "donation") {
-        /*
-         * ============================================
-         * DONASI
-         * ============================================
-         */
-
         if (!form.newDonor && !form.donor_id) {
           throw new Error("Pilih donatur");
         }
@@ -174,19 +183,21 @@ export default function CreateScreen() {
           throw new Error("Nama donatur wajib diisi");
         }
 
-        /*
-         * DONASI UANG
-         */
-        if (form.donationMode === "Uang") {
+        const isGoods = form.type === "Barang";
+
+        // ---------------------------------------------------------
+        // DONASI UANG
+        // ---------------------------------------------------------
+        if (!isGoods) {
           if (!Number(form.amount)) {
             throw new Error("Nominal wajib diisi");
           }
         }
 
-        /*
-         * DONASI BARANG
-         */
-        if (form.donationMode === "Barang") {
+        // ---------------------------------------------------------
+        // DONASI BARANG
+        // ---------------------------------------------------------
+        if (isGoods) {
           if (!form.item_name?.trim()) {
             throw new Error("Nama barang wajib diisi");
           }
@@ -198,65 +209,62 @@ export default function CreateScreen() {
 
         await api.post("/donations", {
           donor_id: form.newDonor ? null : form.donor_id,
-          donor_name: form.newDonor ? form.donor_name : null,
-          donor_phone: form.newDonor ? form.donor_phone : null,
+
+          donor_name: form.newDonor
+            ? form.donor_name
+            : null,
+
+          donor_phone: form.newDonor
+            ? form.donor_phone
+            : null,
 
           program_id: form.program_id || null,
 
           date: form.date,
 
+          // Jenis donasi langsung menggunakan pilihan
+          // Sedekah / Infak / Zakat / Barang / dst.
           type: form.type,
 
-          /*
-           * PENTING:
-           * Donasi barang tidak dihitung sebagai
-           * pemasukan uang.
-           */
-          amount:
-            form.donationMode === "Uang"
-              ? Number(form.amount)
-              : 0,
+          // PENTING:
+          // Barang tidak masuk sebagai pemasukan uang.
+          amount: isGoods
+            ? 0
+            : Number(form.amount),
 
-          /*
-           * Data barang
-           */
-          item_name:
-            form.donationMode === "Barang"
-              ? form.item_name
-              : null,
+          // -------------------------------------------------------
+          // DATA BARANG
+          // -------------------------------------------------------
+          item_name: isGoods
+            ? form.item_name
+            : null,
 
-          item_description:
-            form.donationMode === "Barang"
-              ? form.item_description || ""
-              : "",
+          item_description: isGoods
+            ? form.item_description || ""
+            : "",
 
-          item_quantity:
-            form.donationMode === "Barang"
-              ? Number(form.item_quantity)
-              : 0,
+          item_quantity: isGoods
+            ? Number(form.item_quantity)
+            : 0,
 
-          item_unit:
-            form.donationMode === "Barang"
-              ? form.item_unit || ""
-              : "",
+          item_unit: isGoods
+            ? form.item_unit || ""
+            : "",
 
-          item_condition:
-            form.donationMode === "Barang"
-              ? form.item_condition || ""
-              : "",
+          item_condition: isGoods
+            ? form.item_condition || ""
+            : "",
 
-          estimated_value:
-            form.donationMode === "Barang"
-              ? Number(form.estimated_value) || 0
-              : 0,
+          // Estimasi nilai barang hanya sebagai nilai aset/barang,
+          // BUKAN pemasukan uang.
+          estimated_value: isGoods
+            ? Number(form.estimated_value) || 0
+            : 0,
 
-          /*
-           * Untuk barang otomatis Non-Tunai.
-           */
-          payment_method:
-            form.donationMode === "Barang"
-              ? "Non-Tunai"
-              : form.payment_method,
+          // Barang otomatis dicatat sebagai Non-Tunai.
+          payment_method: isGoods
+            ? "Non-Tunai"
+            : form.payment_method,
 
           payment_status: form.payment_status,
 
@@ -264,13 +272,16 @@ export default function CreateScreen() {
         });
 
         toast(
-          form.donationMode === "Barang"
+          isGoods
             ? "Donasi barang berhasil dicatat"
             : "Donasi berhasil dicatat",
           "success"
         );
       }
 
+      // =========================================================
+      // EXPENSE
+      // =========================================================
       else if (type === "expense") {
         if (!form.description?.trim()) {
           throw new Error("Deskripsi wajib diisi");
@@ -293,6 +304,9 @@ export default function CreateScreen() {
         toast("Pengeluaran berhasil dicatat", "success");
       }
 
+      // =========================================================
+      // DONOR
+      // =========================================================
       else if (type === "donor") {
         if (!form.name?.trim()) {
           throw new Error("Nama donatur wajib diisi");
@@ -308,13 +322,9 @@ export default function CreateScreen() {
       }
 
       router.back();
-    }
-
-    catch (e: any) {
+    } catch (e: any) {
       toast(e?.message || "Gagal menyimpan", "error");
-    }
-
-    finally {
+    } finally {
       setSaving(false);
     }
   }, [type, form, router, toast]);
@@ -326,6 +336,7 @@ export default function CreateScreen() {
         backgroundColor: colors.surface,
       }}
     >
+      {/* HEADER */}
       <View
         style={[
           styles.header,
@@ -353,7 +364,6 @@ export default function CreateScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-
           {/* =====================================================
               TASK
           ===================================================== */}
@@ -413,7 +423,9 @@ export default function CreateScreen() {
                 label="PIC (Penanggung Jawab)"
                 value={form.assigned_user_id}
                 items={users}
-                onSelect={(v) => set("assigned_user_id", v)}
+                onSelect={(v) =>
+                  set("assigned_user_id", v)
+                }
                 allowNone
                 testID="f-pic"
               />
@@ -450,7 +462,9 @@ export default function CreateScreen() {
               <TextField
                 label="Kategori"
                 value={form.category || ""}
-                onChangeText={(v) => set("category", v)}
+                onChangeText={(v) =>
+                  set("category", v)
+                }
                 placeholder="cth: Sosial"
                 testID="f-pcategory"
               />
@@ -458,7 +472,9 @@ export default function CreateScreen() {
               <TextField
                 label="Deskripsi"
                 value={form.description || ""}
-                onChangeText={(v) => set("description", v)}
+                onChangeText={(v) =>
+                  set("description", v)
+                }
                 multiline
                 testID="f-pdesc"
               />
@@ -467,7 +483,10 @@ export default function CreateScreen() {
                 label="Target Dana (Rp)"
                 value={form.target}
                 onChangeText={(v) =>
-                  set("target", v.replace(/[^0-9]/g, ""))
+                  set(
+                    "target",
+                    v.replace(/[^0-9]/g, "")
+                  )
                 }
                 keyboardType="number-pad"
                 placeholder="0"
@@ -494,14 +513,18 @@ export default function CreateScreen() {
               <DateField
                 label="Tanggal Mulai"
                 value={form.start_date}
-                onChange={(v) => set("start_date", v)}
+                onChange={(v) =>
+                  set("start_date", v)
+                }
                 testID="f-pstart"
               />
 
               <DateField
                 label="Tanggal Selesai"
                 value={form.end_date}
-                onChange={(v) => set("end_date", v)}
+                onChange={(v) =>
+                  set("end_date", v)
+                }
                 testID="f-pend"
               />
             </>
@@ -516,10 +539,13 @@ export default function CreateScreen() {
               <View style={styles.toggleRow}>
                 <Pressable
                   testID="donor-existing"
-                  onPress={() => set("newDonor", false)}
+                  onPress={() =>
+                    set("newDonor", false)
+                  }
                   style={[
                     styles.togglePill,
-                    !form.newDonor && styles.togglePillActive,
+                    !form.newDonor &&
+                      styles.togglePillActive,
                   ]}
                 >
                   <T
@@ -536,10 +562,13 @@ export default function CreateScreen() {
 
                 <Pressable
                   testID="donor-new"
-                  onPress={() => set("newDonor", true)}
+                  onPress={() =>
+                    set("newDonor", true)
+                  }
                   style={[
                     styles.togglePill,
-                    form.newDonor && styles.togglePillActive,
+                    form.newDonor &&
+                      styles.togglePillActive,
                   ]}
                 >
                   <T
@@ -583,7 +612,9 @@ export default function CreateScreen() {
                   label="Donatur"
                   value={form.donor_id}
                   items={donors}
-                  onSelect={(v) => set("donor_id", v)}
+                  onSelect={(v) =>
+                    set("donor_id", v)
+                  }
                   testID="f-donor"
                 />
               )}
@@ -593,12 +624,17 @@ export default function CreateScreen() {
                 label="Program"
                 value={form.program_id}
                 items={programs}
-                onSelect={(v) => set("program_id", v)}
+                onSelect={(v) =>
+                  set("program_id", v)
+                }
                 allowNone
                 testID="f-dprogram"
               />
 
-              {/* JENIS DONASI */}
+              {/* =================================================
+                  JENIS DONASI
+                  Barang sekarang dipilih langsung dari sini.
+              ================================================= */}
               <SelectField
                 label="Jenis Donasi"
                 value={form.type}
@@ -608,70 +644,10 @@ export default function CreateScreen() {
               />
 
               {/* =================================================
-                  MODE PENERIMAAN
-              ================================================= */}
-              <View style={styles.sectionLabel}>
-                <T
-                  size={font.sm}
-                  weight="semibold"
-                  color={colors.onSurface}
-                >
-                  Jenis Penerimaan
-                </T>
-              </View>
-
-              <View style={styles.toggleRow}>
-                <Pressable
-                  testID="donation-money"
-                  onPress={() =>
-                    set("donationMode", "Uang")
-                  }
-                  style={[
-                    styles.togglePill,
-                    form.donationMode === "Uang" &&
-                      styles.togglePillActive,
-                  ]}
-                >
-                  <T
-                    weight="semibold"
-                    color={
-                      form.donationMode === "Uang"
-                        ? "#fff"
-                        : colors.onSurfaceSecondary
-                    }
-                  >
-                    Uang
-                  </T>
-                </Pressable>
-
-                <Pressable
-                  testID="donation-goods"
-                  onPress={() =>
-                    set("donationMode", "Barang")
-                  }
-                  style={[
-                    styles.togglePill,
-                    form.donationMode === "Barang" &&
-                      styles.togglePillActive,
-                  ]}
-                >
-                  <T
-                    weight="semibold"
-                    color={
-                      form.donationMode === "Barang"
-                        ? "#fff"
-                        : colors.onSurfaceSecondary
-                    }
-                  >
-                    Barang
-                  </T>
-                </Pressable>
-              </View>
-
-              {/* =================================================
                   DONASI UANG
+                  Semua jenis selain Barang masuk ke alur uang.
               ================================================= */}
-              {form.donationMode === "Uang" ? (
+              {form.type !== "Barang" ? (
                 <>
                   <TextField
                     label="Nominal (Rp)"
@@ -692,7 +668,10 @@ export default function CreateScreen() {
                     value={form.payment_method}
                     options={PAYMENT_METHODS}
                     onSelect={(v) =>
-                      set("payment_method", v)
+                      set(
+                        "payment_method",
+                        v
+                      )
                     }
                     testID="f-method"
                   />
@@ -702,16 +681,23 @@ export default function CreateScreen() {
                     value={form.payment_status}
                     options={PAYMENT_STATUSES}
                     onSelect={(v) =>
-                      set("payment_status", v)
+                      set(
+                        "payment_status",
+                        v
+                      )
                     }
                     testID="f-pstatus2"
                   />
 
                   {(
-                    form.payment_method === "QRIS" ||
-                    form.payment_method === "Payment Gateway"
+                    form.payment_method ===
+                      "QRIS" ||
+                    form.payment_method ===
+                      "Payment Gateway"
                   ) ? (
-                    <View style={styles.pendingBox}>
+                    <View
+                      style={styles.pendingBox}
+                    >
                       <Ionicons
                         name="construct-outline"
                         size={16}
@@ -720,11 +706,14 @@ export default function CreateScreen() {
 
                       <T
                         size={font.sm}
-                        color={colors.onSurfaceSecondary}
+                        color={
+                          colors.onSurfaceSecondary
+                        }
                         style={{ flex: 1 }}
                       >
-                        Integrasi Payment Gateway/QRIS
-                        otomatis belum aktif (pending).
+                        Integrasi Payment
+                        Gateway/QRIS otomatis
+                        belum aktif (pending).
                         Status dicatat manual.
                       </T>
                     </View>
@@ -747,9 +736,14 @@ export default function CreateScreen() {
 
                   <TextField
                     label="Deskripsi Barang"
-                    value={form.item_description}
+                    value={
+                      form.item_description
+                    }
                     onChangeText={(v) =>
-                      set("item_description", v)
+                      set(
+                        "item_description",
+                        v
+                      )
                     }
                     placeholder="Contoh: Beras premium 5 kg"
                     multiline
@@ -762,7 +756,10 @@ export default function CreateScreen() {
                     onChangeText={(v) =>
                       set(
                         "item_quantity",
-                        v.replace(/[^0-9.]/g, "")
+                        v.replace(
+                          /[^0-9.]/g,
+                          ""
+                        )
                       )
                     }
                     keyboardType="decimal-pad"
@@ -774,7 +771,10 @@ export default function CreateScreen() {
                     label="Satuan"
                     value={form.item_unit}
                     onChangeText={(v) =>
-                      set("item_unit", v)
+                      set(
+                        "item_unit",
+                        v
+                      )
                     }
                     placeholder="Contoh: kg, dus, pcs"
                     testID="f-item-unit"
@@ -782,7 +782,9 @@ export default function CreateScreen() {
 
                   <SelectField
                     label="Kondisi Barang"
-                    value={form.item_condition}
+                    value={
+                      form.item_condition
+                    }
                     options={[
                       "Baik",
                       "Baru",
@@ -790,18 +792,26 @@ export default function CreateScreen() {
                       "Perlu Pemeriksaan",
                     ]}
                     onSelect={(v) =>
-                      set("item_condition", v)
+                      set(
+                        "item_condition",
+                        v
+                      )
                     }
                     testID="f-item-condition"
                   />
 
                   <TextField
                     label="Estimasi Nilai (Rp)"
-                    value={form.estimated_value}
+                    value={
+                      form.estimated_value
+                    }
                     onChangeText={(v) =>
                       set(
                         "estimated_value",
-                        v.replace(/[^0-9]/g, "")
+                        v.replace(
+                          /[^0-9]/g,
+                          ""
+                        )
                       )
                     }
                     keyboardType="number-pad"
@@ -809,7 +819,9 @@ export default function CreateScreen() {
                     testID="f-estimated-value"
                   />
 
-                  <View style={styles.pendingBox}>
+                  <View
+                    style={styles.pendingBox}
+                  >
                     <Ionicons
                       name="information-circle-outline"
                       size={16}
@@ -818,12 +830,16 @@ export default function CreateScreen() {
 
                     <T
                       size={font.sm}
-                      color={colors.onSurfaceSecondary}
+                      color={
+                        colors.onSurfaceSecondary
+                      }
                       style={{ flex: 1 }}
                     >
-                      Estimasi nilai barang hanya untuk
-                      pencatatan laporan dan tidak dihitung
-                      sebagai pemasukan uang.
+                      Estimasi nilai barang
+                      hanya untuk pencatatan
+                      laporan dan tidak
+                      dihitung sebagai
+                      pemasukan uang.
                     </T>
                   </View>
                 </>
@@ -833,7 +849,9 @@ export default function CreateScreen() {
               <DateField
                 label="Tanggal"
                 value={form.date}
-                onChange={(v) => set("date", v)}
+                onChange={(v) =>
+                  set("date", v)
+                }
                 testID="f-date"
               />
 
@@ -881,7 +899,10 @@ export default function CreateScreen() {
                 onChangeText={(v) =>
                   set(
                     "amount",
-                    v.replace(/[^0-9]/g, "")
+                    v.replace(
+                      /[^0-9]/g,
+                      ""
+                    )
                   )
                 }
                 keyboardType="number-pad"
@@ -905,7 +926,10 @@ export default function CreateScreen() {
                 value={form.payment_method}
                 options={PAYMENT_METHODS}
                 onSelect={(v) =>
-                  set("payment_method", v)
+                  set(
+                    "payment_method",
+                    v
+                  )
                 }
                 testID="f-emethod"
               />
@@ -968,7 +992,6 @@ export default function CreateScreen() {
               />
             </>
           )}
-
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -1025,10 +1048,6 @@ const styles = StyleSheet.create({
 
   togglePillActive: {
     backgroundColor: colors.brand,
-  },
-
-  sectionLabel: {
-    marginBottom: -spacing.sm,
   },
 
   pendingBox: {
