@@ -47,7 +47,10 @@ const TITLES: Record<string, string> = {
 };
 
 export default function CreateScreen() {
-  const { type } = useLocalSearchParams<{ type: string }>();
+  const { type, kind } = useLocalSearchParams<{
+  type: string;
+  kind?: string;
+}>();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
@@ -118,6 +121,12 @@ export default function CreateScreen() {
   const u = await api.get<any[]>("/users");
   setUsers(u);
 }
+if (type === "donation" && kind === "barang") {
+  setForm((prev) => ({
+    ...prev,
+    type: "Barang",
+  }));
+}
 
         if (type === "donation") {
           const d = await api.get<any[]>("/donors");
@@ -125,7 +134,7 @@ export default function CreateScreen() {
         }
       } catch {}
     })();
-  }, [type]);
+  }, [type, kind]);
 
   const submit = useCallback(async () => {
     setSaving(true);

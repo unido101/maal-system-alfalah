@@ -68,6 +68,30 @@ export default function Fundraising() {
         <EmptyState icon="heart-outline" title={`Belum ada ${TABS.find(t => t.key === tab)?.label.toLowerCase()}`}
           subtitle="Tambahkan data baru dengan tombol +." />
       ) : (
+       {tab === "donation" && (
+  <Pressable
+    onPress={() => router.push("/create/donation?kind=barang")}
+    style={styles.goodsButton}
+  >
+    <View style={styles.goodsIcon}>
+      <Ionicons name="gift-outline" size={20} color={colors.primary} />
+    </View>
+
+    <View style={{ flex: 1 }}>
+      <T style={styles.goodsTitle}>Catat Sedekah Barang</T>
+      <T style={styles.goodsSubtitle}>
+        Catat bantuan berupa barang dari donatur
+      </T>
+    </View>
+
+    <Ionicons
+      name="chevron-forward"
+      size={20}
+      color={colors.textSecondary}
+    />
+  </Pressable>
+)}
+       
         <FlatList
           data={items}
           keyExtractor={(i) => i.id}
@@ -159,3 +183,33 @@ const styles = StyleSheet.create({
   segBtn: { flex: 1, height: 38, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
   segActive: { backgroundColor: colors.brand },
 });
+goodsButton: {
+  marginHorizontal: spacing.md,
+  marginBottom: spacing.md,
+  padding: spacing.md,
+  borderRadius: radius.md,
+  backgroundColor: colors.surface,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.md,
+},
+
+goodsIcon: {
+  width: 42,
+  height: 42,
+  borderRadius: 21,
+  backgroundColor: colors.primarySoft,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+goodsTitle: {
+  fontSize: font.md,
+  fontWeight: "700",
+},
+
+goodsSubtitle: {
+  marginTop: 2,
+  fontSize: font.sm,
+  color: colors.textSecondary,
+},
