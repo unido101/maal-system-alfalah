@@ -68,7 +68,8 @@ export default function Fundraising() {
         <EmptyState icon="heart-outline" title={`Belum ada ${TABS.find(t => t.key === tab)?.label.toLowerCase()}`}
           subtitle="Tambahkan data baru dengan tombol +." />
       ) : (
-       {tab === "donation" && (
+        <>
+          {tab === "donation" && (
   <Pressable
     onPress={() => router.push("/create/donation?kind=barang")}
     style={styles.goodsButton}
@@ -103,6 +104,7 @@ export default function Fundraising() {
                 : <DonorRow d={item} onPress={() => router.push(`/donor/${item.id}`)} />
           }
         />
+        </>
       )}
 
       <Fab testID="fr-fab" onPress={fabAction} bottom={insets.bottom + 20} />
@@ -182,8 +184,7 @@ const styles = StyleSheet.create({
   segment: { flexDirection: "row", backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: 4, marginTop: spacing.md },
   segBtn: { flex: 1, height: 38, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
   segActive: { backgroundColor: colors.brand },
-});
-goodsButton: {
+  goodsButton: {
   marginHorizontal: spacing.md,
   marginBottom: spacing.md,
   padding: spacing.md,
@@ -191,25 +192,26 @@ goodsButton: {
   backgroundColor: colors.surface,
   flexDirection: "row",
   alignItems: "center",
-  gap: spacing.md,
-},
+    gap: spacing.md,
+  },
 
-goodsIcon: {
+  goodsIcon: {
   width: 42,
   height: 42,
   borderRadius: 21,
   backgroundColor: colors.primarySoft,
   alignItems: "center",
-  justifyContent: "center",
-},
+    justifyContent: "center",
+  },
 
-goodsTitle: {
+  goodsTitle: {
   fontSize: font.md,
-  fontWeight: "700",
-},
+    fontWeight: "700",
+  },
 
-goodsSubtitle: {
+  goodsSubtitle: {
   marginTop: 2,
   fontSize: font.sm,
-  color: colors.textSecondary,
-},
+    color: colors.textSecondary,
+  },
+});
