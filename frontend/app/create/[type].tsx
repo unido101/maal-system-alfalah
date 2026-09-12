@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -37,6 +37,10 @@ import {
   PROGRAM_STATUSES,
 } from "@/src/theme";
 
+/* =========================================================
+   TITLES
+========================================================= */
+
 const TITLES: Record<string, string> = {
   task: "Tugas Baru",
   donation: "Donasi Baru",
@@ -46,27 +50,79 @@ const TITLES: Record<string, string> = {
   lead: "Input Tamu",
 };
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
+const LEAD_SOURCES = [
+  "Tamu Masjid",
+  "WhatsApp",
+  "Instagram",
+  "Kajian",
+  "Program",
+  "Donatur",
+  "Lainnya",
+];
+
+const LEAD_INTERESTS = [
+  "Zakat",
+  "Infak",
+  "Sedekah",
+  "Wakaf",
+  "Program",
+  "Layanan Masjid",
+  "Lainnya",
+];
+
+const LEAD_STATUSES = [
+  "Input",
+  "Follow Up",
+  "Qualified",
+  "Converted",
+  "Lost",
+];
+
+const ITEM_CONDITIONS = [
+  "Baik",
+  "Baru",
+  "Layak Pakai",
+  "Perlu Pemeriksaan",
+];
+
+/* =========================================================
+   SCREEN
+========================================================= */
+
 export default function CreateScreen() {
   const { type, kind } = useLocalSearchParams<{
-  type: string;
-  kind?: string;
-}>();
+    type: string;
+    kind?: string;
+  }>();
+
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
 
   const [saving, setSaving] = useState(false);
+
   const [programs, setPrograms] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [donors, setDonors] = useState<any[]>([]);
 
+  /* =======================================================
+     FORM STATE
+  ======================================================= */
+
   const [form, setForm] = useState<any>({
     date: new Date().toISOString(),
 
+    /* Task */
     priority: "Medium",
 
+    /* General status */
     status: type === "program" ? "Active" : "Draft",
 
+    /* Category */
     category:
       type === "task"
         ? "Feed"
@@ -74,16 +130,16 @@ export default function CreateScreen() {
           ? "Operational"
           : "Sosial",
 
-    // Donation
+    /* Donation */
     type: "Sedekah",
     payment_method: "Cash",
     payment_status: "Paid",
 
-    // General
+    /* General */
     target: "",
     amount: "",
 
-    // Donasi Barang
+    /* Donasi Barang */
     item_name: "",
     item_description: "",
     item_quantity: "",
@@ -91,66 +147,127 @@ export default function CreateScreen() {
     item_condition: "Baik",
     estimated_value: "",
 
-    // Donatur
+    /* Donatur */
     newDonor: false,
+
+    /* Lead */
+    name: "",
+    phone: "",
+    organization: "",
+    purpose: "",
+    source: "Tamu Masjid",
+    interest: "Lainnya",
+    lead_status: "Input",
+    pic_id: "",
+    notes: "",
   });
 
-  const set = (k: string, v: any) =>
-    setForm((f: any) => ({
-      ...f,
-      [k]: v,
+  const set = useCallback((key: string, value: any) => {
+    setForm((prev: any) => ({
+      ...prev,
+      [key]: value,
     }));
+  }, []);
+
+  /* =======================================================
+     LOAD DATA
+  ======================================================= */
 
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    const loadData = async () => {
       try {
+        /* ---------------------------------------------------
+           PROGRAMS
+        --------------------------------------------------- */
+
         if (
           ["task", "donation", "expense", "program"].includes(
             type as string
           )
         ) {
-          const p = await api.get<any[]>("/programs");
-          setPrograms(p);
+          const programData = await api.get<any[]>("/programs");
+
+          if (mounted) {
+            setPrograms(programData || []);
+          }
         }
+
+        /* ---------------------------------------------------
+           USERS / PIC
+        --------------------------------------------------- */
 
         if (
-  type === "task" ||
-  type === "program" ||
-  type === "lead"
-) {
-  const u = await api.get<any[]>("/users");
-  setUsers(u);
-}
-if (type === "donation" && kind === "barang") {
-  setForm((prev) => ({
-    ...prev,
-    type: "Barang",
-  }));
-}
+          type === "task" ||
+          type === "program" ||
+          type === "lead"
+        ) {
+          const userData = await api.get<any[]>("/users");
+
+          if (mounted) {
+            setUsers(userData || []);
+          }
+        }
+
+        /* ---------------------------------------------------
+           DONORS
+        --------------------------------------------------- */
 
         if (type === "donation") {
-          const d = await api.get<any[]>("/donors");
-          setDonors(d);
+          const donorData = await api.get<any[]>("/donors");
+
+          if (mounted) {
+            setDonors(donorData || []);
+          }
         }
-      } catch {}
-    })();
+
+        /* ---------------------------------------------------
+           QUICK ACTION: /create/donation?kind=barang
+        --------------------------------------------------- */
+
+        if (type === "donation" && kind === "barang") {
+          if (mounted) {
+            setForm((prev: any) => ({
+              ...prev,
+              type: "Barang",
+            }));
+          }
+        }
+      } catch (error) {
+        console.error("Create form load error:", error);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
   }, [type, kind]);
 
+  /* =======================================================
+     SUBMIT
+  ======================================================= */
+
   const submit = useCallback(async () => {
+    if (saving) return;
+
     setSaving(true);
 
     try {
-      // =========================================================
-      // TASK
-      // =========================================================
+      /* =====================================================
+         TASK
+      ===================================================== */
+
       if (type === "task") {
         if (!form.title?.trim()) {
           throw new Error("Judul wajib diisi");
         }
 
         await api.post("/tasks", {
-          title: form.title,
-          description: form.description || "",
+          title: form.title.trim(),
+          description: form.description?.trim() || "",
           category: form.category,
           priority: form.priority,
           status: form.status,
@@ -163,18 +280,19 @@ if (type === "donation" && kind === "barang") {
         toast("Tugas berhasil dibuat", "success");
       }
 
-      // =========================================================
-      // PROGRAM
-      // =========================================================
+      /* =====================================================
+         PROGRAM
+      ===================================================== */
+
       else if (type === "program") {
         if (!form.name?.trim()) {
           throw new Error("Nama program wajib diisi");
         }
 
         await api.post("/programs", {
-          name: form.name,
-          category: form.category,
-          description: form.description || "",
+          name: form.name.trim(),
+          category: form.category || "Sosial",
+          description: form.description?.trim() || "",
           target: Number(form.target) || 0,
           status: form.status,
           pic_id: form.pic_id || null,
@@ -185,76 +303,103 @@ if (type === "donation" && kind === "barang") {
         toast("Program berhasil dibuat", "success");
       }
 
-      // =========================================================
-      // DONATION
-      // =========================================================
+      /* =====================================================
+         DONATION
+      ===================================================== */
+
       else if (type === "donation") {
+        /* ---------------------------------------------------
+           VALIDASI DONATUR
+        --------------------------------------------------- */
+
         if (!form.newDonor && !form.donor_id) {
           throw new Error("Pilih donatur");
         }
 
-        if (form.newDonor && !form.donor_name?.trim()) {
+        if (
+          form.newDonor &&
+          !form.donor_name?.trim()
+        ) {
           throw new Error("Nama donatur wajib diisi");
         }
 
         const isGoods = form.type === "Barang";
 
-        // ---------------------------------------------------------
-        // DONASI UANG
-        // ---------------------------------------------------------
+        /* ---------------------------------------------------
+           DONASI UANG
+        --------------------------------------------------- */
+
         if (!isGoods) {
-          if (!Number(form.amount)) {
+          const amount = Number(form.amount);
+
+          if (!amount || amount <= 0) {
             throw new Error("Nominal wajib diisi");
           }
         }
 
-        // ---------------------------------------------------------
-        // DONASI BARANG
-        // ---------------------------------------------------------
+        /* ---------------------------------------------------
+           DONASI BARANG
+        --------------------------------------------------- */
+
         if (isGoods) {
+          const quantity = Number(form.item_quantity);
+
           if (!form.item_name?.trim()) {
             throw new Error("Nama barang wajib diisi");
           }
 
-          if (!Number(form.item_quantity)) {
+          if (!quantity || quantity <= 0) {
             throw new Error("Jumlah barang wajib diisi");
           }
         }
 
+        /* ---------------------------------------------------
+           SUBMIT DONASI
+        --------------------------------------------------- */
+
         await api.post("/donations", {
-          donor_id: form.newDonor ? null : form.donor_id,
+          donor_id: form.newDonor
+            ? null
+            : form.donor_id || null,
 
           donor_name: form.newDonor
-            ? form.donor_name
+            ? form.donor_name.trim()
             : null,
 
           donor_phone: form.newDonor
-            ? form.donor_phone
+            ? form.donor_phone || ""
             : null,
 
           program_id: form.program_id || null,
 
           date: form.date,
 
-          // Jenis donasi langsung menggunakan pilihan
-          // Sedekah / Infak / Zakat / Barang / dst.
+          /*
+           * Jenis donasi:
+           * Sedekah / Infak / Zakat / Barang / dst.
+           */
           type: form.type,
 
-          // PENTING:
-          // Barang tidak masuk sebagai pemasukan uang.
+          /*
+           * PENTING:
+           *
+           * Donasi barang TIDAK masuk sebagai
+           * pemasukan uang.
+           */
           amount: isGoods
             ? 0
             : Number(form.amount),
 
-          // -------------------------------------------------------
-          // DATA BARANG
-          // -------------------------------------------------------
+          /* -------------------------------------------------
+             DATA BARANG
+          ------------------------------------------------- */
+
           item_name: isGoods
-            ? form.item_name
+            ? form.item_name.trim()
             : null,
 
           item_description: isGoods
-            ? form.item_description || ""
+            ? form.item_description?.trim() || ""
             : "",
 
           item_quantity: isGoods
@@ -262,27 +407,34 @@ if (type === "donation" && kind === "barang") {
             : 0,
 
           item_unit: isGoods
-            ? form.item_unit || ""
+            ? form.item_unit?.trim() || ""
             : "",
 
           item_condition: isGoods
             ? form.item_condition || ""
             : "",
 
-          // Estimasi nilai barang hanya sebagai nilai aset/barang,
-          // BUKAN pemasukan uang.
+          /*
+           * Estimasi nilai barang hanya untuk
+           * pencatatan nilai barang.
+           *
+           * TIDAK dihitung sebagai pemasukan uang.
+           */
           estimated_value: isGoods
             ? Number(form.estimated_value) || 0
             : 0,
 
-          // Barang otomatis dicatat sebagai Non-Tunai.
+          /*
+           * Barang otomatis dicatat sebagai
+           * transaksi Non-Tunai.
+           */
           payment_method: isGoods
             ? "Non-Tunai"
             : form.payment_method,
 
           payment_status: form.payment_status,
 
-          notes: form.notes || "",
+          notes: form.notes?.trim() || "",
         });
 
         toast(
@@ -293,51 +445,62 @@ if (type === "donation" && kind === "barang") {
         );
       }
 
-      // =========================================================
-      // EXPENSE
-      // =========================================================
+      /* =====================================================
+         EXPENSE
+      ===================================================== */
+
       else if (type === "expense") {
         if (!form.description?.trim()) {
           throw new Error("Deskripsi wajib diisi");
         }
 
-        if (!Number(form.amount)) {
+        const amount = Number(form.amount);
+
+        if (!amount || amount <= 0) {
           throw new Error("Nominal wajib diisi");
         }
 
         await api.post("/expenses", {
-          description: form.description,
+          description: form.description.trim(),
           category: form.category,
-          amount: Number(form.amount),
+          amount,
           program_id: form.program_id || null,
           payment_method: form.payment_method,
           date: form.date,
-          notes: form.notes || "",
+          notes: form.notes?.trim() || "",
         });
 
-        toast("Pengeluaran berhasil dicatat", "success");
+        toast(
+          "Pengeluaran berhasil dicatat",
+          "success"
+        );
       }
 
-      // =========================================================
-      // DONOR
-      // =========================================================
+      /* =====================================================
+         DONOR
+      ===================================================== */
+
       else if (type === "donor") {
         if (!form.name?.trim()) {
           throw new Error("Nama donatur wajib diisi");
         }
 
         await api.post("/donors", {
-          name: form.name,
+          name: form.name.trim(),
           phone: form.phone || "",
-          notes: form.notes || "",
+          notes: form.notes?.trim() || "",
         });
 
-        toast("Donatur berhasil ditambahkan", "success");
+        toast(
+          "Donatur berhasil ditambahkan",
+          "success"
+        );
       }
 
-      // =========================================================
-      // LEAD / TAMU
-      // =========================================================
+      /* =====================================================
+         LEAD / TAMU
+      ===================================================== */
+
       else if (type === "lead") {
         if (!form.name?.trim()) {
           throw new Error("Nama tamu wajib diisi");
@@ -346,71 +509,114 @@ if (type === "donation" && kind === "barang") {
         await api.post("/leads", {
           name: form.name.trim(),
           phone: form.phone || "",
-          organization: form.organization || "",
-          purpose: form.purpose || "",
-          source: form.source || "Tamu Masjid",
-          interest: form.interest || "Lainnya",
-          status: form.lead_status || "Input",
-          notes: form.notes || "",
-          pic_id: form.pic_id || null,
+          organization:
+            form.organization?.trim() || "",
+          purpose:
+            form.purpose?.trim() || "",
+          source:
+            form.source || "Tamu Masjid",
+          interest:
+            form.interest || "Lainnya",
+          status:
+            form.lead_status || "Input",
+          notes:
+            form.notes?.trim() || "",
+          pic_id:
+            form.pic_id || null,
           date: form.date,
         });
 
-        toast("Lead berhasil dicatat", "success");
+        toast(
+          "Lead berhasil dicatat",
+          "success"
+        );
       }
 
+      /* =====================================================
+         BACK
+      ===================================================== */
+
       router.back();
-    } catch (e: any) {
-      toast(e?.message || "Gagal menyimpan", "error");
+    } catch (error: any) {
+      console.error("Create submit error:", error);
+
+      toast(
+        error?.message || "Gagal menyimpan",
+        "error"
+      );
     } finally {
       setSaving(false);
     }
-  }, [type, form, router, toast]);
+  }, [
+    type,
+    form,
+    saving,
+    router,
+    toast,
+  ]);
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.surface,
-      }}
-    >
-      {/* HEADER */}
+    <View style={styles.container}>
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
       <View
         style={[
           styles.header,
           {
-            paddingTop: insets.top + spacing.sm,
+            paddingTop:
+              insets.top + spacing.sm,
           },
         ]}
       >
         <ScreenHeader
-          title={TITLES[type as string] || "Baru"}
+          title={
+            TITLES[type as string] || "Baru"
+          }
           onBack={() => router.back()}
         />
       </View>
 
+      {/* =====================================================
+          FORM
+      ===================================================== */}
+
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1 }}
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : undefined
+        }
+        style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={{
-            padding: spacing.lg,
-            gap: spacing.md,
-            paddingBottom: insets.bottom + 120,
-          }}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingBottom:
+                insets.bottom + 120,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* =====================================================
+          {/* =================================================
               TASK
-          ===================================================== */}
+          ================================================= */}
+
           {type === "task" && (
             <>
               <TextField
                 label="Judul"
                 value={form.title || ""}
-                onChangeText={(v) => set("title", v)}
+                onChangeText={(value) =>
+                  set("title", value)
+                }
                 placeholder="Judul tugas konten"
                 testID="f-title"
               />
@@ -418,7 +624,9 @@ if (type === "donation" && kind === "barang") {
               <TextField
                 label="Deskripsi"
                 value={form.description || ""}
-                onChangeText={(v) => set("description", v)}
+                onChangeText={(value) =>
+                  set("description", value)
+                }
                 placeholder="Deskripsi singkat"
                 multiline
                 testID="f-desc"
@@ -428,7 +636,9 @@ if (type === "donation" && kind === "barang") {
                 label="Kategori"
                 value={form.category}
                 options={TASK_CATEGORIES}
-                onSelect={(v) => set("category", v)}
+                onSelect={(value) =>
+                  set("category", value)
+                }
                 testID="f-category"
               />
 
@@ -436,7 +646,9 @@ if (type === "donation" && kind === "barang") {
                 label="Prioritas"
                 value={form.priority}
                 options={TASK_PRIORITIES}
-                onSelect={(v) => set("priority", v)}
+                onSelect={(value) =>
+                  set("priority", value)
+                }
                 testID="f-priority"
               />
 
@@ -444,7 +656,9 @@ if (type === "donation" && kind === "barang") {
                 label="Status"
                 value={form.status}
                 options={TASK_STATUSES}
-                onSelect={(v) => set("status", v)}
+                onSelect={(value) =>
+                  set("status", value)
+                }
                 testID="f-status"
               />
 
@@ -452,7 +666,9 @@ if (type === "donation" && kind === "barang") {
                 label="Program Terkait"
                 value={form.program_id}
                 items={programs}
-                onSelect={(v) => set("program_id", v)}
+                onSelect={(value) =>
+                  set("program_id", value)
+                }
                 allowNone
                 testID="f-program"
               />
@@ -461,8 +677,11 @@ if (type === "donation" && kind === "barang") {
                 label="PIC (Penanggung Jawab)"
                 value={form.assigned_user_id}
                 items={users}
-                onSelect={(v) =>
-                  set("assigned_user_id", v)
+                onSelect={(value) =>
+                  set(
+                    "assigned_user_id",
+                    value
+                  )
                 }
                 allowNone
                 testID="f-pic"
@@ -471,28 +690,41 @@ if (type === "donation" && kind === "barang") {
               <DateField
                 label="Tanggal Mulai"
                 value={form.start_date}
-                onChange={(v) => set("start_date", v)}
+                onChange={(value) =>
+                  set(
+                    "start_date",
+                    value
+                  )
+                }
                 testID="f-start"
               />
 
               <DateField
                 label="Deadline"
                 value={form.deadline}
-                onChange={(v) => set("deadline", v)}
+                onChange={(value) =>
+                  set(
+                    "deadline",
+                    value
+                  )
+                }
                 testID="f-deadline"
               />
             </>
           )}
 
-          {/* =====================================================
+          {/* =================================================
               PROGRAM
-          ===================================================== */}
+          ================================================= */}
+
           {type === "program" && (
             <>
               <TextField
                 label="Nama Program"
                 value={form.name || ""}
-                onChangeText={(v) => set("name", v)}
+                onChangeText={(value) =>
+                  set("name", value)
+                }
                 placeholder="cth: Program Makan Gratis"
                 testID="f-name"
               />
@@ -500,8 +732,11 @@ if (type === "donation" && kind === "barang") {
               <TextField
                 label="Kategori"
                 value={form.category || ""}
-                onChangeText={(v) =>
-                  set("category", v)
+                onChangeText={(value) =>
+                  set(
+                    "category",
+                    value
+                  )
                 }
                 placeholder="cth: Sosial"
                 testID="f-pcategory"
@@ -510,8 +745,11 @@ if (type === "donation" && kind === "barang") {
               <TextField
                 label="Deskripsi"
                 value={form.description || ""}
-                onChangeText={(v) =>
-                  set("description", v)
+                onChangeText={(value) =>
+                  set(
+                    "description",
+                    value
+                  )
                 }
                 multiline
                 testID="f-pdesc"
@@ -520,10 +758,13 @@ if (type === "donation" && kind === "barang") {
               <TextField
                 label="Target Dana (Rp)"
                 value={form.target}
-                onChangeText={(v) =>
+                onChangeText={(value) =>
                   set(
                     "target",
-                    v.replace(/[^0-9]/g, "")
+                    value.replace(
+                      /[^0-9]/g,
+                      ""
+                    )
                   )
                 }
                 keyboardType="number-pad"
@@ -535,7 +776,9 @@ if (type === "donation" && kind === "barang") {
                 label="Status"
                 value={form.status}
                 options={PROGRAM_STATUSES}
-                onSelect={(v) => set("status", v)}
+                onSelect={(value) =>
+                  set("status", value)
+                }
                 testID="f-pstatus"
               />
 
@@ -543,7 +786,9 @@ if (type === "donation" && kind === "barang") {
                 label="PIC"
                 value={form.pic_id}
                 items={users}
-                onSelect={(v) => set("pic_id", v)}
+                onSelect={(value) =>
+                  set("pic_id", value)
+                }
                 allowNone
                 testID="f-ppic"
               />
@@ -551,8 +796,11 @@ if (type === "donation" && kind === "barang") {
               <DateField
                 label="Tanggal Mulai"
                 value={form.start_date}
-                onChange={(v) =>
-                  set("start_date", v)
+                onChange={(value) =>
+                  set(
+                    "start_date",
+                    value
+                  )
                 }
                 testID="f-pstart"
               />
@@ -560,25 +808,35 @@ if (type === "donation" && kind === "barang") {
               <DateField
                 label="Tanggal Selesai"
                 value={form.end_date}
-                onChange={(v) =>
-                  set("end_date", v)
+                onChange={(value) =>
+                  set(
+                    "end_date",
+                    value
+                  )
                 }
                 testID="f-pend"
               />
             </>
           )}
 
-          {/* =====================================================
+          {/* =================================================
               DONATION
-          ===================================================== */}
+          ================================================= */}
+
           {type === "donation" && (
             <>
-              {/* DONATUR */}
+              {/* ---------------------------------------------
+                  DONATUR
+              --------------------------------------------- */}
+
               <View style={styles.toggleRow}>
                 <Pressable
                   testID="donor-existing"
                   onPress={() =>
-                    set("newDonor", false)
+                    set(
+                      "newDonor",
+                      false
+                    )
                   }
                   style={[
                     styles.togglePill,
@@ -601,7 +859,10 @@ if (type === "donation" && kind === "barang") {
                 <Pressable
                   testID="donor-new"
                   onPress={() =>
-                    set("newDonor", true)
+                    set(
+                      "newDonor",
+                      true
+                    )
                   }
                   style={[
                     styles.togglePill,
@@ -626,9 +887,15 @@ if (type === "donation" && kind === "barang") {
                 <>
                   <TextField
                     label="Nama Donatur"
-                    value={form.donor_name || ""}
-                    onChangeText={(v) =>
-                      set("donor_name", v)
+                    value={
+                      form.donor_name ||
+                      ""
+                    }
+                    onChangeText={(value) =>
+                      set(
+                        "donor_name",
+                        value
+                      )
                     }
                     placeholder="Nama lengkap"
                     testID="f-donorname"
@@ -636,9 +903,15 @@ if (type === "donation" && kind === "barang") {
 
                   <TextField
                     label="No. Telepon"
-                    value={form.donor_phone || ""}
-                    onChangeText={(v) =>
-                      set("donor_phone", v)
+                    value={
+                      form.donor_phone ||
+                      ""
+                    }
+                    onChangeText={(value) =>
+                      set(
+                        "donor_phone",
+                        value
+                      )
                     }
                     keyboardType="phone-pad"
                     placeholder="08xxx"
@@ -650,50 +923,64 @@ if (type === "donation" && kind === "barang") {
                   label="Donatur"
                   value={form.donor_id}
                   items={donors}
-                  onSelect={(v) =>
-                    set("donor_id", v)
+                  onSelect={(value) =>
+                    set(
+                      "donor_id",
+                      value
+                    )
                   }
                   testID="f-donor"
                 />
               )}
 
-              {/* PROGRAM */}
+              {/* ---------------------------------------------
+                  PROGRAM
+              --------------------------------------------- */}
+
               <EntitySelect
                 label="Program"
                 value={form.program_id}
                 items={programs}
-                onSelect={(v) =>
-                  set("program_id", v)
+                onSelect={(value) =>
+                  set(
+                    "program_id",
+                    value
+                  )
                 }
                 allowNone
                 testID="f-dprogram"
               />
 
-              {/* =================================================
+              {/* ---------------------------------------------
                   JENIS DONASI
-                  Barang sekarang dipilih langsung dari sini.
-              ================================================= */}
+              --------------------------------------------- */}
+
               <SelectField
                 label="Jenis Donasi"
                 value={form.type}
                 options={DONATION_TYPES}
-                onSelect={(v) => set("type", v)}
+                onSelect={(value) =>
+                  set("type", value)
+                }
                 testID="f-dtype"
               />
 
-              {/* =================================================
+              {/* ---------------------------------------------
                   DONASI UANG
-                  Semua jenis selain Barang masuk ke alur uang.
-              ================================================= */}
+              --------------------------------------------- */}
+
               {form.type !== "Barang" ? (
                 <>
                   <TextField
                     label="Nominal (Rp)"
                     value={form.amount}
-                    onChangeText={(v) =>
+                    onChangeText={(value) =>
                       set(
                         "amount",
-                        v.replace(/[^0-9]/g, "")
+                        value.replace(
+                          /[^0-9]/g,
+                          ""
+                        )
                       )
                     }
                     keyboardType="number-pad"
@@ -703,12 +990,16 @@ if (type === "donation" && kind === "barang") {
 
                   <SelectField
                     label="Metode Pembayaran"
-                    value={form.payment_method}
-                    options={PAYMENT_METHODS}
-                    onSelect={(v) =>
+                    value={
+                      form.payment_method
+                    }
+                    options={
+                      PAYMENT_METHODS
+                    }
+                    onSelect={(value) =>
                       set(
                         "payment_method",
-                        v
+                        value
                       )
                     }
                     testID="f-method"
@@ -716,30 +1007,36 @@ if (type === "donation" && kind === "barang") {
 
                   <SelectField
                     label="Status Pembayaran"
-                    value={form.payment_status}
-                    options={PAYMENT_STATUSES}
-                    onSelect={(v) =>
+                    value={
+                      form.payment_status
+                    }
+                    options={
+                      PAYMENT_STATUSES
+                    }
+                    onSelect={(value) =>
                       set(
                         "payment_status",
-                        v
+                        value
                       )
                     }
                     testID="f-pstatus2"
                   />
 
-                  {(
+                  {(form.payment_method ===
+                    "QRIS" ||
                     form.payment_method ===
-                      "QRIS" ||
-                    form.payment_method ===
-                      "Payment Gateway"
-                  ) ? (
+                      "Payment Gateway") && (
                     <View
-                      style={styles.pendingBox}
+                      style={
+                        styles.pendingBox
+                      }
                     >
                       <Ionicons
                         name="construct-outline"
                         size={16}
-                        color={colors.warning}
+                        color={
+                          colors.warning
+                        }
                       />
 
                       <T
@@ -747,26 +1044,36 @@ if (type === "donation" && kind === "barang") {
                         color={
                           colors.onSurfaceSecondary
                         }
-                        style={{ flex: 1 }}
+                        style={{
+                          flex: 1,
+                        }}
                       >
                         Integrasi Payment
-                        Gateway/QRIS otomatis
-                        belum aktif (pending).
-                        Status dicatat manual.
+                        Gateway/QRIS
+                        otomatis belum
+                        aktif (pending).
+                        Status dicatat
+                        manual.
                       </T>
                     </View>
-                  ) : null}
+                  )}
                 </>
               ) : (
-                /* =================================================
+                /* -------------------------------------------
                    DONASI BARANG
-                ================================================= */
+                ------------------------------------------- */
+
                 <>
                   <TextField
                     label="Nama Barang"
-                    value={form.item_name}
-                    onChangeText={(v) =>
-                      set("item_name", v)
+                    value={
+                      form.item_name
+                    }
+                    onChangeText={(value) =>
+                      set(
+                        "item_name",
+                        value
+                      )
                     }
                     placeholder="Contoh: Beras"
                     testID="f-item-name"
@@ -777,10 +1084,10 @@ if (type === "donation" && kind === "barang") {
                     value={
                       form.item_description
                     }
-                    onChangeText={(v) =>
+                    onChangeText={(value) =>
                       set(
                         "item_description",
-                        v
+                        value
                       )
                     }
                     placeholder="Contoh: Beras premium 5 kg"
@@ -790,11 +1097,13 @@ if (type === "donation" && kind === "barang") {
 
                   <TextField
                     label="Jumlah"
-                    value={form.item_quantity}
-                    onChangeText={(v) =>
+                    value={
+                      form.item_quantity
+                    }
+                    onChangeText={(value) =>
                       set(
                         "item_quantity",
-                        v.replace(
+                        value.replace(
                           /[^0-9.]/g,
                           ""
                         )
@@ -807,11 +1116,13 @@ if (type === "donation" && kind === "barang") {
 
                   <TextField
                     label="Satuan"
-                    value={form.item_unit}
-                    onChangeText={(v) =>
+                    value={
+                      form.item_unit
+                    }
+                    onChangeText={(value) =>
                       set(
                         "item_unit",
-                        v
+                        value
                       )
                     }
                     placeholder="Contoh: kg, dus, pcs"
@@ -823,16 +1134,13 @@ if (type === "donation" && kind === "barang") {
                     value={
                       form.item_condition
                     }
-                    options={[
-                      "Baik",
-                      "Baru",
-                      "Layak Pakai",
-                      "Perlu Pemeriksaan",
-                    ]}
-                    onSelect={(v) =>
+                    options={
+                      ITEM_CONDITIONS
+                    }
+                    onSelect={(value) =>
                       set(
                         "item_condition",
-                        v
+                        value
                       )
                     }
                     testID="f-item-condition"
@@ -843,10 +1151,10 @@ if (type === "donation" && kind === "barang") {
                     value={
                       form.estimated_value
                     }
-                    onChangeText={(v) =>
+                    onChangeText={(value) =>
                       set(
                         "estimated_value",
-                        v.replace(
+                        value.replace(
                           /[^0-9]/g,
                           ""
                         )
@@ -858,12 +1166,16 @@ if (type === "donation" && kind === "barang") {
                   />
 
                   <View
-                    style={styles.pendingBox}
+                    style={
+                      styles.pendingBox
+                    }
                   >
                     <Ionicons
                       name="information-circle-outline"
                       size={16}
-                      color={colors.warning}
+                      color={
+                        colors.warning
+                      }
                     />
 
                     <T
@@ -871,34 +1183,52 @@ if (type === "donation" && kind === "barang") {
                       color={
                         colors.onSurfaceSecondary
                       }
-                      style={{ flex: 1 }}
+                      style={{
+                        flex: 1,
+                      }}
                     >
-                      Estimasi nilai barang
-                      hanya untuk pencatatan
-                      laporan dan tidak
-                      dihitung sebagai
+                      Estimasi nilai
+                      barang hanya
+                      untuk pencatatan
+                      laporan dan
+                      tidak dihitung
+                      sebagai
                       pemasukan uang.
                     </T>
                   </View>
                 </>
               )}
 
-              {/* TANGGAL */}
+              {/* ---------------------------------------------
+                  TANGGAL
+              --------------------------------------------- */}
+
               <DateField
                 label="Tanggal"
                 value={form.date}
-                onChange={(v) =>
-                  set("date", v)
+                onChange={(value) =>
+                  set(
+                    "date",
+                    value
+                  )
                 }
                 testID="f-date"
               />
 
-              {/* CATATAN */}
+              {/* ---------------------------------------------
+                  CATATAN
+              --------------------------------------------- */}
+
               <TextField
                 label="Catatan"
-                value={form.notes || ""}
-                onChangeText={(v) =>
-                  set("notes", v)
+                value={
+                  form.notes || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "notes",
+                    value
+                  )
                 }
                 multiline
                 testID="f-notes"
@@ -906,16 +1236,22 @@ if (type === "donation" && kind === "barang") {
             </>
           )}
 
-          {/* =====================================================
+          {/* =================================================
               EXPENSE
-          ===================================================== */}
+          ================================================= */}
+
           {type === "expense" && (
             <>
               <TextField
                 label="Deskripsi"
-                value={form.description || ""}
-                onChangeText={(v) =>
-                  set("description", v)
+                value={
+                  form.description || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "description",
+                    value
+                  )
                 }
                 placeholder="cth: Pembelian bahan makanan"
                 testID="f-edesc"
@@ -924,9 +1260,14 @@ if (type === "donation" && kind === "barang") {
               <SelectField
                 label="Kategori"
                 value={form.category}
-                options={EXPENSE_CATEGORIES}
-                onSelect={(v) =>
-                  set("category", v)
+                options={
+                  EXPENSE_CATEGORIES
+                }
+                onSelect={(value) =>
+                  set(
+                    "category",
+                    value
+                  )
                 }
                 testID="f-ecategory"
               />
@@ -934,10 +1275,10 @@ if (type === "donation" && kind === "barang") {
               <TextField
                 label="Nominal (Rp)"
                 value={form.amount}
-                onChangeText={(v) =>
+                onChangeText={(value) =>
                   set(
                     "amount",
-                    v.replace(
+                    value.replace(
                       /[^0-9]/g,
                       ""
                     )
@@ -950,10 +1291,15 @@ if (type === "donation" && kind === "barang") {
 
               <EntitySelect
                 label="Program Terkait"
-                value={form.program_id}
+                value={
+                  form.program_id
+                }
                 items={programs}
-                onSelect={(v) =>
-                  set("program_id", v)
+                onSelect={(value) =>
+                  set(
+                    "program_id",
+                    value
+                  )
                 }
                 allowNone
                 testID="f-eprogram"
@@ -961,12 +1307,16 @@ if (type === "donation" && kind === "barang") {
 
               <SelectField
                 label="Metode Pembayaran"
-                value={form.payment_method}
-                options={PAYMENT_METHODS}
-                onSelect={(v) =>
+                value={
+                  form.payment_method
+                }
+                options={
+                  PAYMENT_METHODS
+                }
+                onSelect={(value) =>
                   set(
                     "payment_method",
-                    v
+                    value
                   )
                 }
                 testID="f-emethod"
@@ -975,17 +1325,25 @@ if (type === "donation" && kind === "barang") {
               <DateField
                 label="Tanggal"
                 value={form.date}
-                onChange={(v) =>
-                  set("date", v)
+                onChange={(value) =>
+                  set(
+                    "date",
+                    value
+                  )
                 }
                 testID="f-edate"
               />
 
               <TextField
                 label="Catatan"
-                value={form.notes || ""}
-                onChangeText={(v) =>
-                  set("notes", v)
+                value={
+                  form.notes || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "notes",
+                    value
+                  )
                 }
                 multiline
                 testID="f-enotes"
@@ -993,16 +1351,22 @@ if (type === "donation" && kind === "barang") {
             </>
           )}
 
-          {/* =====================================================
+          {/* =================================================
               DONOR
-          ===================================================== */}
+          ================================================= */}
+
           {type === "donor" && (
             <>
               <TextField
                 label="Nama Donatur"
-                value={form.name || ""}
-                onChangeText={(v) =>
-                  set("name", v)
+                value={
+                  form.name || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "name",
+                    value
+                  )
                 }
                 placeholder="Nama lengkap"
                 testID="f-dname"
@@ -1010,9 +1374,14 @@ if (type === "donation" && kind === "barang") {
 
               <TextField
                 label="No. Telepon"
-                value={form.phone || ""}
-                onChangeText={(v) =>
-                  set("phone", v)
+                value={
+                  form.phone || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "phone",
+                    value
+                  )
                 }
                 keyboardType="phone-pad"
                 placeholder="08xxx"
@@ -1021,9 +1390,14 @@ if (type === "donation" && kind === "barang") {
 
               <TextField
                 label="Catatan"
-                value={form.notes || ""}
-                onChangeText={(v) =>
-                  set("notes", v)
+                value={
+                  form.notes || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "notes",
+                    value
+                  )
                 }
                 multiline
                 testID="f-dnotes"
@@ -1031,23 +1405,38 @@ if (type === "donation" && kind === "barang") {
             </>
           )}
 
-          {/* =====================================================
+          {/* =================================================
               LEAD / TAMU
-          ===================================================== */}
+          ================================================= */}
+
           {type === "lead" && (
             <>
               <TextField
                 label="Nama Tamu / Lead"
-                value={form.name || ""}
-                onChangeText={(v) => set("name", v)}
+                value={
+                  form.name || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "name",
+                    value
+                  )
+                }
                 placeholder="Nama lengkap"
                 testID="f-lead-name"
               />
 
               <TextField
                 label="WhatsApp"
-                value={form.phone || ""}
-                onChangeText={(v) => set("phone", v)}
+                value={
+                  form.phone || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "phone",
+                    value
+                  )
+                }
                 keyboardType="phone-pad"
                 placeholder="08xxx"
                 testID="f-lead-phone"
@@ -1055,9 +1444,15 @@ if (type === "donation" && kind === "barang") {
 
               <TextField
                 label="Organisasi / Instansi"
-                value={form.organization || ""}
-                onChangeText={(v) =>
-                  set("organization", v)
+                value={
+                  form.organization ||
+                  ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "organization",
+                    value
+                  )
                 }
                 placeholder="Nama organisasi (opsional)"
                 testID="f-lead-organization"
@@ -1065,9 +1460,14 @@ if (type === "donation" && kind === "barang") {
 
               <TextField
                 label="Keperluan"
-                value={form.purpose || ""}
-                onChangeText={(v) =>
-                  set("purpose", v)
+                value={
+                  form.purpose || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "purpose",
+                    value
+                  )
                 }
                 placeholder="Keperluan / kebutuhan tamu"
                 multiline
@@ -1077,19 +1477,17 @@ if (type === "donation" && kind === "barang") {
               <SelectField
                 label="Sumber"
                 value={
-                  form.source || "Tamu Masjid"
+                  form.source ||
+                  "Tamu Masjid"
                 }
-                options={[
-                  "Tamu Masjid",
-                  "WhatsApp",
-                  "Instagram",
-                  "Kajian",
-                  "Program",
-                  "Donatur",
-                  "Lainnya",
-                ]}
-                onSelect={(v) =>
-                  set("source", v)
+                options={
+                  LEAD_SOURCES
+                }
+                onSelect={(value) =>
+                  set(
+                    "source",
+                    value
+                  )
                 }
                 testID="f-lead-source"
               />
@@ -1097,19 +1495,17 @@ if (type === "donation" && kind === "barang") {
               <SelectField
                 label="Ketertarikan"
                 value={
-                  form.interest || "Lainnya"
+                  form.interest ||
+                  "Lainnya"
                 }
-                options={[
-                  "Zakat",
-                  "Infak",
-                  "Sedekah",
-                  "Wakaf",
-                  "Program",
-                  "Layanan Masjid",
-                  "Lainnya",
-                ]}
-                onSelect={(v) =>
-                  set("interest", v)
+                options={
+                  LEAD_INTERESTS
+                }
+                onSelect={(value) =>
+                  set(
+                    "interest",
+                    value
+                  )
                 }
                 testID="f-lead-interest"
               />
@@ -1117,17 +1513,17 @@ if (type === "donation" && kind === "barang") {
               <SelectField
                 label="Status"
                 value={
-                  form.lead_status || "Input"
+                  form.lead_status ||
+                  "Input"
                 }
-                options={[
-                  "Input",
-                  "Follow Up",
-                  "Qualified",
-                  "Converted",
-                  "Lost",
-                ]}
-                onSelect={(v) =>
-                  set("lead_status", v)
+                options={
+                  LEAD_STATUSES
+                }
+                onSelect={(value) =>
+                  set(
+                    "lead_status",
+                    value
+                  )
                 }
                 testID="f-lead-status"
               />
@@ -1136,8 +1532,11 @@ if (type === "donation" && kind === "barang") {
                 label="PIC"
                 value={form.pic_id}
                 items={users}
-                onSelect={(v) =>
-                  set("pic_id", v)
+                onSelect={(value) =>
+                  set(
+                    "pic_id",
+                    value
+                  )
                 }
                 allowNone
                 testID="f-lead-pic"
@@ -1146,17 +1545,25 @@ if (type === "donation" && kind === "barang") {
               <DateField
                 label="Tanggal"
                 value={form.date}
-                onChange={(v) =>
-                  set("date", v)
+                onChange={(value) =>
+                  set(
+                    "date",
+                    value
+                  )
                 }
                 testID="f-lead-date"
               />
 
               <TextField
                 label="Catatan"
-                value={form.notes || ""}
-                onChangeText={(v) =>
-                  set("notes", v)
+                value={
+                  form.notes || ""
+                }
+                onChangeText={(value) =>
+                  set(
+                    "notes",
+                    value
+                  )
                 }
                 placeholder="Catatan follow up"
                 multiline
@@ -1164,17 +1571,20 @@ if (type === "donation" && kind === "barang") {
               />
             </>
           )}
-
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* FOOTER */}
+      {/* =====================================================
+          FOOTER
+      ===================================================== */}
+
       <View
         style={[
           styles.footer,
           {
             paddingBottom:
-              insets.bottom + spacing.md,
+              insets.bottom +
+              spacing.md,
           },
         ]}
       >
@@ -1189,13 +1599,30 @@ if (type === "donation" && kind === "barang") {
   );
 }
 
+/* ===========================================================
+   STYLES
+=========================================================== */
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+
+  flex: {
+    flex: 1,
+  },
+
   header: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+
+  scrollContent: {
+    padding: spacing.lg,
+    gap: spacing.md,
   },
 
   footer: {
@@ -1207,7 +1634,8 @@ const styles = StyleSheet.create({
 
   toggleRow: {
     flexDirection: "row",
-    backgroundColor: colors.surfaceSecondary,
+    backgroundColor:
+      colors.surfaceSecondary,
     borderRadius: radius.md,
     padding: 4,
   },
