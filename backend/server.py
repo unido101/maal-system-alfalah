@@ -38,7 +38,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-3.8-flash"
-GEMINI_FALLBACK_MODEL = "gemini-2.5-flash"
+GEMINI_FALLBACK_MODEL = "gemini-3.6-flash"
 
 gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
