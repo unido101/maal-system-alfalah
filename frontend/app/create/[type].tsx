@@ -114,7 +114,7 @@ export default function CreateScreen() {
   ======================================================= */
 
   const [form, setForm] = useState<any>({
-    date: new Date().toISOString(),
+    date: new Date().toLocaleDateString("en-CA"),
 
     /* Task */
     priority: "Medium",
