@@ -54,6 +54,12 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("baitulmaal")
 
+# Short dashboard cache: repeated tab switches do not hit MongoDB every time.
+# Data remains fresh within a few seconds while making the app feel much faster.
+DASHBOARD_CACHE_TTL = 8.0
+_dashboard_cache = {}
+_dashboard_cache_lock = asyncio.Lock()
+
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -1452,7 +1458,7 @@ OPENING_BALANCE = 0
 
 
 async def finance_summary() -> dict:
-    """Calculate finance totals inside MongoDB to avoid loading thousands of records."""
+    """Return finance totals using MongoDB aggregation, without loading documents."""
     donation_pipeline = [
         {"$match": {"payment_status": "Paid", "deleted_at": None}},
         {"$group": {
@@ -1469,8 +1475,8 @@ async def finance_summary() -> dict:
     ]
 
     donation_groups, expense_groups = await asyncio.gather(
-        db.donations.aggregate(donation_pipeline).to_list(None),
-        db.expenses.aggregate(expense_pipeline).to_list(None),
+        db.donations.aggregate(donation_pipeline, hint=[("deleted_at", 1), ("payment_status", 1), ("date", 1)]).to_list(None),
+        db.expenses.aggregate(expense_pipeline, hint=[("deleted_at", 1), ("program_id", 1)]).to_list(None),
     )
 
     income_by_type = {row["_id"]: row["total"] for row in donation_groups}
@@ -1501,85 +1507,55 @@ async def get_finance_summary(user: dict = Depends(require_roles(*FIN_ROLES))):
 # --------------------------------------------------------------------------
 @api.get("/dashboard")
 async def dashboard(user: dict = Depends(get_current_user)):
-    """Lightweight dashboard endpoint: MongoDB calculates counters instead of returning large datasets."""
+    """Fast dashboard: indexed counts, parallel Mongo queries, and short cache."""
     role = user["role"]
+    cache_key = role
+    now_mono = asyncio.get_running_loop().time()
+
+    # Very short cache makes navigating away/back to the dashboard instant.
+    cached = _dashboard_cache.get(cache_key)
+    if cached and (now_mono - cached[0]) < DASHBOARD_CACHE_TTL:
+        return cached[1]
+
     now = now_utc()
     today = now.date().isoformat()
     tomorrow = (now.date() + timedelta(days=1)).isoformat()
     month_start = now.strftime("%Y-%m-01")
-    next_month_date = (now.date().replace(day=28) + timedelta(days=4)).replace(day=1)
-    next_month = next_month_date.isoformat()
+    next_month = ((now.date().replace(day=28) + timedelta(days=4)).replace(day=1)).isoformat()
 
     result = {"role": role, "attention": []}
     open_statuses = ["Draft", "Assigned", "In Progress", "Review", "Revision"]
 
-    # One aggregation replaces the old 5,000-document task download.
-    task_pipeline = [
-        {"$match": {"deleted_at": None}},
-        {"$group": {
-            "_id": None,
-            "tasks_today": {
-                "$sum": {"$cond": [
-                    {"$and": [
-                        {"$gte": ["$deadline", today]},
-                        {"$lt": ["$deadline", tomorrow]},
-                        {"$in": ["$status", open_statuses]},
-                    ]},
-                    1, 0,
-                ]}
-            },
-            "overdue": {
-                "$sum": {"$cond": [
-                    {"$and": [
-                        {"$lt": ["$deadline", today]},
-                        {"$in": ["$status", open_statuses]},
-                    ]},
-                    1, 0,
-                ]}
-            },
-            "in_production": {
-                "$sum": {"$cond": [{"$in": ["$status", ["In Progress", "Assigned"]]}, 1, 0]}
-            },
-            "pending_review": {
-                "$sum": {"$cond": [{"$in": ["$status", ["Review", "Revision"]]}, 1, 0]}
-            },
-            "published": {
-                "$sum": {"$cond": [{"$eq": ["$status", "Published"]}, 1, 0]}
-            },
-            "review_count": {
-                "$sum": {"$cond": [{"$eq": ["$status", "Review"]}, 1, 0]}
-            },
-        }},
+    # Count queries are index-friendly and avoid scanning all task documents into Python.
+    task_queries = [
+        db.tasks.count_documents({"deleted_at": None, "deadline": {"$gte": today, "$lt": tomorrow}, "status": {"$in": open_statuses}}),
+        db.tasks.count_documents({"deleted_at": None, "deadline": {"$lt": today}, "status": {"$in": open_statuses}}),
+        db.tasks.count_documents({"deleted_at": None, "status": {"$in": ["In Progress", "Assigned"]}}),
+        db.tasks.count_documents({"deleted_at": None, "status": {"$in": ["Review", "Revision"]}}),
+        db.tasks.count_documents({"deleted_at": None, "status": "Published"}),
+        db.tasks.count_documents({"deleted_at": None, "status": "Review"}),
     ]
-
-    task_rows = await db.tasks.aggregate(task_pipeline).to_list(1)
-    task_stats = task_rows[0] if task_rows else {}
-    tasks_today = task_stats.get("tasks_today", 0)
-    overdue = task_stats.get("overdue", 0)
-    review_ct = task_stats.get("review_count", 0)
+    task_counts = await asyncio.gather(*task_queries)
+    tasks_today, overdue, in_production, pending_review, published, review_ct = task_counts
 
     result["today"] = {"tasks_today": tasks_today, "overdue_tasks": overdue}
     result["content"] = {
-        "in_production": task_stats.get("in_production", 0),
-        "pending_review": task_stats.get("pending_review", 0),
-        "published": task_stats.get("published", 0),
+        "in_production": in_production,
+        "pending_review": pending_review,
+        "published": published,
         "overdue": overdue,
     }
 
     if overdue:
-        result["attention"].append({
-            "type": "warning", "icon": "warning",
-            "text": f"{overdue} tugas melewati deadline",
-        })
+        result["attention"].append({"type": "warning", "icon": "warning", "text": f"{overdue} tugas melewati deadline"})
     if review_ct:
-        result["attention"].append({
-            "type": "info", "icon": "eye",
-            "text": f"{review_ct} konten menunggu review",
-        })
+        result["attention"].append({"type": "info", "icon": "eye", "text": f"{review_ct} konten menunggu review"})
 
     if role in ("manager", "fundraising"):
-        # Only aggregate the required monthly/today counters.
-        donation_pipeline = [
+        active_program_query = {"status": "Active", "deleted_at": None}
+
+        # One donation aggregation calculates month, today, and per-program totals in one scan.
+        fundraising_pipeline = [
             {"$match": {"payment_status": "Paid", "deleted_at": None}},
             {"$facet": {
                 "month": [
@@ -1592,33 +1568,52 @@ async def dashboard(user: dict = Depends(get_current_user)):
                 ],
                 "today": [
                     {"$match": {"date": {"$gte": today, "$lt": tomorrow}}},
+                    {"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$amount", 0]}}}},
+                ],
+                "by_program": [
+                    {"$match": {"program_id": {"$exists": True, "$ne": None}}},
                     {"$group": {
-                        "_id": None,
+                        "_id": "$program_id",
                         "total": {"$sum": {"$ifNull": ["$amount", 0]}},
                     }},
                 ],
             }},
         ]
 
-        active_program_query = {"status": "Active", "deleted_at": None}
-        donation_rows, active_progs, pending_ct = await asyncio.gather(
-            db.donations.aggregate(donation_pipeline).to_list(1),
-            db.programs.find(
-                active_program_query,
-                {"_id": 0, "id": 1, "name": 1, "target": 1},
-            ).to_list(500),
-            db.donations.count_documents({"payment_status": "Pending", "deleted_at": None}),
+        donation_task = db.donations.aggregate(
+            fundraising_pipeline,
+            hint=[("deleted_at", 1), ("payment_status", 1), ("date", 1)],
+        ).to_list(1)
+        programs_task = db.programs.find(
+            active_program_query,
+            {"_id": 0, "id": 1, "name": 1, "target": 1},
+        ).to_list(500)
+        pending_task = db.donations.count_documents(
+            {"payment_status": "Pending", "deleted_at": None}
         )
 
+        # Manager finance is independent of fundraising; run it concurrently.
+        finance_task = finance_summary() if role == "manager" else None
+
+        if finance_task is not None:
+            donation_rows, active_progs, pending_ct, fin = await asyncio.gather(
+                donation_task, programs_task, pending_task, finance_task
+            )
+        else:
+            donation_rows, active_progs, pending_ct = await asyncio.gather(
+                donation_task, programs_task, pending_task
+            )
+            fin = None
+
         donation_data = donation_rows[0] if donation_rows else {}
-        month_rows = donation_data.get("month", [])
-        today_rows = donation_data.get("today", [])
-        month_row = month_rows[0] if month_rows else {}
-        today_row = today_rows[0] if today_rows else {}
+        month_row = (donation_data.get("month") or [{}])[0]
+        today_row = (donation_data.get("today") or [{}])[0]
+        program_rows = donation_data.get("by_program") or []
+        raised_by_program = {r.get("_id"): r.get("total", 0) for r in program_rows}
 
         month_total = month_row.get("total", 0)
-        donor_ids = {donor_id for donor_id in month_row.get("donors", []) if donor_id}
-        monthly_target = sum(p.get("target", 0) or 0 for p in active_progs)
+        donor_ids = {x for x in month_row.get("donors", []) if x}
+        monthly_target = sum((p.get("target", 0) or 0) for p in active_progs)
 
         result["today"]["donations_today"] = today_row.get("total", 0)
         result["today"]["active_programs"] = len(active_progs)
@@ -1635,41 +1630,24 @@ async def dashboard(user: dict = Depends(get_current_user)):
                 "text": f"{pending_ct} donasi menunggu konfirmasi",
             })
 
-        # One grouped query per collection replaces N queries (one per active program).
-        program_ids = [p["id"] for p in active_progs if p.get("id")]
-        if program_ids:
-            program_donation_pipeline = [
-                {"$match": {
-                    "program_id": {"$in": program_ids},
-                    "payment_status": "Paid",
-                    "deleted_at": None,
-                }},
-                {"$group": {
-                    "_id": "$program_id",
-                    "total_raised": {"$sum": {"$ifNull": ["$amount", 0]}},
-                }},
-            ]
-            program_donation_rows = await db.donations.aggregate(program_donation_pipeline).to_list(None)
-            raised_by_program = {r["_id"]: r.get("total_raised", 0) for r in program_donation_rows}
+        for p in active_progs:
+            target = p.get("target", 0) or 0
+            if target > 0 and raised_by_program.get(p.get("id"), 0) < target * 0.5:
+                result["attention"].append({
+                    "type": "warning", "icon": "target",
+                    "text": f"Program {p.get('name', 'Program')} belum mencapai 50% target",
+                })
+                break
 
-            for p in active_progs:
-                target = p.get("target", 0) or 0
-                if target > 0 and raised_by_program.get(p["id"], 0) < target * 0.5:
-                    result["attention"].append({
-                        "type": "warning", "icon": "target",
-                        "text": f"Program {p['name']} belum mencapai 50% target",
-                    })
-                    break
+        if fin is not None:
+            result["finance"] = {
+                "total_income": fin["total_income"],
+                "total_expenses": fin["total_expenses"],
+                "closing_balance": fin["closing_balance"],
+                "status": fin["status"],
+            }
 
-    if role == "manager":
-        fin = await finance_summary()
-        result["finance"] = {
-            "total_income": fin["total_income"],
-            "total_expenses": fin["total_expenses"],
-            "closing_balance": fin["closing_balance"],
-            "status": fin["status"],
-        }
-
+    _dashboard_cache[cache_key] = (now_mono, result)
     return result
 
 
@@ -2952,6 +2930,7 @@ async def startup():
         db.tasks.create_index([("deleted_at", 1), ("status", 1), ("deadline", 1)]),
         db.donations.create_index([("deleted_at", 1), ("payment_status", 1), ("date", 1)]),
         db.donations.create_index([("deleted_at", 1), ("payment_status", 1), ("program_id", 1)]),
+        db.donations.create_index([("deleted_at", 1), ("payment_status", 1)]),
         db.expenses.create_index([("deleted_at", 1), ("program_id", 1)]),
         db.programs.create_index([("deleted_at", 1), ("status", 1)]),
     )
